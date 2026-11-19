@@ -1,0 +1,56 @@
+# Logitech receivers. A new receiver PID is added here, no code change needed.
+# family: unifying | lightspeed | bolt
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC52B
+name = "Unifying receiver"
+family = "unifying"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC532
+name = "Unifying receiver"
+family = "unifying"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC539
+name = "Lightspeed receiver"
+family = "lightspeed"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC53A
+name = "Lightspeed receiver"
+family = "lightspeed"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC53F
+name = "Lightspeed receiver"
+family = "lightspeed"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC541
+name = "Lightspeed receiver"
+family = "lightspeed"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC545
+name = "Lightspeed receiver"
+family = "lightspeed"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC547
+name = "Lightspeed receiver"
+family = "lightspeed"
+
+[[receiver]]
+vendor_id = 0x046D
+product_id = 0xC548
+name = "Bolt receiver"
+family = "bolt"

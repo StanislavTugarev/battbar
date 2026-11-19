@@ -1,0 +1,14 @@
+[package]
+name = "battbar-steelseries"
+description = "battbar: SteelSeries headset battery provider (native + headsetcontrol fallback)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+battbar-core = { workspace = true }
+battbar-hid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

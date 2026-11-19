@@ -1,0 +1,99 @@
+{"type":"note","text":"Reference: G HUB mouse 11 %, keyboard 100 % (on Bluetooth LE); headset on base and Bluetooth"}
+{"type":"header","battbar":"0.1.0","link":"hid:046d:c547:2:ff00","kind":"hidapi","vendor_id":1133,"product_id":50503,"product":"USB Receiver","bus":"usb","collections":[[65280,1],[65280,2]]}
+{"type":"header","battbar":"0.1.0","link":"hid:1038:12e0:4:ffc0","kind":"hidapi","vendor_id":4152,"product_id":4832,"product":"Arctis Nova Pro Wireless","bus":"usb","collections":[[65472,1],[65280,1]]}
+{"type":"frame","t_ms":7,"link":"hid:1038:12e0:4:ffc0","dir":"out","hex":"06 b0"}
+{"type":"header","battbar":"0.1.0","link":"hid:046d:0afc:2:ff43","kind":"hidapi","vendor_id":1133,"product_id":2812,"product":"Yeti GX","bus":"usb","collections":[[65347,1793],[65347,1794],[65347,1796]]}
+{"type":"frame","t_ms":25,"link":"hid:1038:12e0:4:ffc0","dir":"in","hex":"06 b0 00 00 04 01 08 07 08 00 02 0a 00 00 08 08 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"header","battbar":"0.1.0","link":"gatt:5440ca758b12","kind":"gatt","vendor_id":0,"product_id":0,"product":"G915 KEYBOARD","bus":"ble","collections":[]}
+{"type":"frame","t_ms":222,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 00 1b 00 00 aa 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":253,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 00 1b 04 02 aa 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":253,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 00 0b 00 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":314,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 00 0b 02 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":314,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 02 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":343,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 02 0b 05 bb a7 d6 de 00 0e b3 54 40 7c c3 3e 01 00 00"}
+{"type":"frame","t_ms":343,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 00 0b 00 05 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":373,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 00 0b 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":373,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 03 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":403,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 03 0b 2c 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":403,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 03 1b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":433,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 03 1b 47 39 31 35 20 57 49 52 45 4c 45 53 53 20 52 47"}
+{"type":"frame","t_ms":433,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 03 1b 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":463,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 03 1b 42 20 4d 45 43 48 41 4e 49 43 41 4c 20 47 41 4d"}
+{"type":"frame","t_ms":463,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 03 1b 20 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":493,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 03 1b 49 4e 47 20 4b 45 59 42 4f 41 52 44 00 00 00 00"}
+{"type":"frame","t_ms":493,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 03 2b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":523,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 03 2b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":523,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 00 0b 10 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":553,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 00 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":553,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 00 0b 10 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":583,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 00 0b 07 00 03 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":583,"link":"gatt:5440ca758b12","dir":"out","hex":"11 ff 07 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":614,"link":"gatt:5440ca758b12","dir":"in","hex":"11 ff 07 0b 10 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":614,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 1b 00 00 aa"}
+{"type":"frame","t_ms":623,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 1b 04 02 aa"}
+{"type":"frame","t_ms":623,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 00 03 00"}
+{"type":"frame","t_ms":639,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 02 00 07"}
+{"type":"frame","t_ms":639,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 02 0b 00 00 00"}
+{"type":"frame","t_ms":655,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"11 ff 02 0b 02 bb a7 5b 6e 00 08 0a fc 00 00 00 00 00 01 00"}
+{"type":"frame","t_ms":655,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 00 05 00"}
+{"type":"frame","t_ms":671,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 03 00 04"}
+{"type":"frame","t_ms":671,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 03 0b 00 00 00"}
+{"type":"frame","t_ms":687,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 03 0b 07 00 00"}
+{"type":"frame","t_ms":687,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 03 1b 00 00 00"}
+{"type":"frame","t_ms":703,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"11 ff 03 1b 59 65 74 69 20 47 58 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":703,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 03 2b 00 00 00"}
+{"type":"frame","t_ms":719,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 03 2b 0f 00 00"}
+{"type":"frame","t_ms":719,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 10 04 00"}
+{"type":"frame","t_ms":735,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 00 00 00"}
+{"type":"frame","t_ms":735,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 10 01 00"}
+{"type":"frame","t_ms":751,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 00 00 00"}
+{"type":"frame","t_ms":751,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 10 00 00"}
+{"type":"frame","t_ms":767,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 00 00 00"}
+{"type":"frame","t_ms":767,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 81 00 00 00 00"}
+{"type":"frame","t_ms":768,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 81 00 00 09 00"}
+{"type":"frame","t_ms":768,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 20 00 00"}
+{"type":"frame","t_ms":769,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 20 07 08 40 7c 11 00 01 b3 00 00 00 00 2c 00 00"}
+{"type":"frame","t_ms":769,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 30 00 00"}
+{"type":"frame","t_ms":770,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 30 bb a7 d6 de 18 40 a0 01 05 00 00 00 00 00 00"}
+{"type":"frame","t_ms":770,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 40 00 00"}
+{"type":"frame","t_ms":771,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 40 0d 47 39 31 35 20 4b 45 59 42 4f 41 52 44 00"}
+{"type":"frame","t_ms":771,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 21 00 00"}
+{"type":"frame","t_ms":772,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 21 08 08 40 99 11 00 02 b1 00 00 00 00 a4 00 00"}
+{"type":"frame","t_ms":772,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 31 00 00"}
+{"type":"frame","t_ms":773,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 31 bb a7 27 d7 0e 40 a0 00 0f 00 00 00 00 00 00"}
+{"type":"frame","t_ms":773,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 41 00 00"}
+{"type":"frame","t_ms":774,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 41 0b 47 35 30 32 20 58 20 50 4c 55 53 00 00 00"}
+{"type":"frame","t_ms":774,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 22 00 00"}
+{"type":"frame","t_ms":775,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":775,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 23 00 00"}
+{"type":"frame","t_ms":776,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":776,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 24 00 00"}
+{"type":"frame","t_ms":777,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":777,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 25 00 00"}
+{"type":"frame","t_ms":778,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":778,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 00 1b 00 00 aa"}
+{"type":"frame","t_ms":779,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 01 8f 00 1b 08 00"}
+{"type":"frame","t_ms":779,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 1b 00 00 aa"}
+{"type":"frame","t_ms":1746,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 1b 04 02 aa 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1747,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 0b 00 03 00"}
+{"type":"frame","t_ms":1755,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 0b 02 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1756,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 02 0b 00 00 00"}
+{"type":"frame","t_ms":1764,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 02 0b 0c bb a7 27 d7 00 0c 40 99 c0 95 00 00 00 01 00"}
+{"type":"frame","t_ms":1765,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 0b 00 05 00"}
+{"type":"frame","t_ms":1773,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 0b 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1774,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 03 0b 00 00 00"}
+{"type":"frame","t_ms":1782,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 03 0b 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1783,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 03 1b 00 00 00"}
+{"type":"frame","t_ms":1791,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 03 1b 47 35 30 32 20 58 20 50 4c 55 53 00 00 00 00 00"}
+{"type":"frame","t_ms":1792,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 03 2b 00 00 00"}
+{"type":"frame","t_ms":1800,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 03 2b 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1801,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 0b 10 04 00"}
+{"type":"frame","t_ms":1809,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 0b 06 00 05 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1810,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 06 0b 00 00 00"}
+{"type":"frame","t_ms":1818,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 06 0b 0f 0f 01 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1819,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 06 1b 00 00 00"}
+{"type":"frame","t_ms":1827,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 06 1b 0b 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"note","text":"poll 1: Arctis Nova Pro Wireless = 83%, exact"}
+{"type":"note","text":"poll 1: DualSense Wireless Controller = disconnected"}
+{"type":"note","text":"poll 1: G502 X PLUS = 11%, exact"}
+{"type":"note","text":"poll 1: G915 WIRELESS RGB MECHANICAL GAMING KEYBOARD = 100%, 4148 mV, exact"}

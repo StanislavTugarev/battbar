@@ -36,11 +36,7 @@ fn main() {
         allow_mixed: args.iter().any(|a| a == "--allow-mixed"),
         redact: !args.iter().any(|a| a == "--no-redact"),
     };
-    let cmd = args
-        .iter()
-        .find(|a| !a.starts_with("--"))
-        .map(String::as_str)
-        .unwrap_or("all");
+    let cmd = args.iter().find(|a| !a.starts_with("--")).map(String::as_str).unwrap_or("all");
 
     let api = HidApi::new().expect("hidapi init failed");
     #[cfg(target_os = "macos")]
@@ -147,6 +143,7 @@ fn cmd_enum(groups: &Groups) {
 // --------------------------------------------------------------------- HID++
 
 #[derive(Debug)]
+#[allow(dead_code)] // fields are shown via Debug
 enum HErr {
     Timeout,
     Io(String),
@@ -336,9 +333,7 @@ fn cmd_hidpp(api: &HidApi, groups: &Groups, opts: &Opts) {
         if d.vendor_id() != VID_LOGITECH {
             continue;
         }
-        let has_hidpp = infos
-            .iter()
-            .any(|i| i.usage_page() == 0xFF00 || i.usage_page() == 0xFF43);
+        let has_hidpp = infos.iter().any(|i| i.usage_page() == 0xFF00 || i.usage_page() == 0xFF43);
         if !has_hidpp {
             continue;
         }
@@ -369,22 +364,27 @@ fn cmd_hidpp(api: &HidApi, groups: &Groups, opts: &Opts) {
             }
         };
         // Long-only if no short-report collection (0xFF00/0x0001 or 0xFF43/0x0201) is present.
-        let long_only = !infos.iter().any(|i| {
-            (i.usage_page() == 0xFF00 && i.usage() == 0x0001)
-                || (i.usage_page() == 0xFF43 && i.usage() & 0x00FF == 0x01)
-        });
+        let long_only = !infos
+            .iter()
+            .any(|i| (i.usage_page() == 0xFF00 && i.usage() == 0x0001) || (i.usage_page() == 0xFF43 && i.usage() & 0x00FF == 0x01));
         let mut h = Hidpp {
             dev: &dev,
             long_only,
             other_hidpp: vec![],
             dropped_non_hidpp: 0,
         };
-        println!("   report mode: {}", if long_only { "long (0x11) only" } else { "short (0x10) + long (0x11)" });
+        println!(
+            "   report mode: {}",
+            if long_only {
+                "long (0x11) only"
+            } else {
+                "short (0x10) + long (0x11)"
+            }
+        );
 
-        let is_receiver = matches!(d.bus_type(), BusType::Usb)
-            && d.product_string().unwrap_or("").to_lowercase().contains("receiver");
+        let is_receiver = matches!(d.bus_type(), BusType::Usb) && d.product_string().unwrap_or("").to_lowercase().contains("receiver");
         if is_receiver {
-            probe_receiver(&mut h);
+            probe_receiver(&mut h, opts);
             for idx in 1..=6u8 {
                 probe_device(&mut h, idx, opts);
             }
@@ -402,7 +402,7 @@ fn cmd_hidpp(api: &HidApi, groups: &Groups, opts: &Opts) {
     println!();
 }
 
-fn probe_receiver(h: &mut Hidpp) {
+fn probe_receiver(h: &mut Hidpp, opts: &Opts) {
     println!("   [receiver idx 0xFF]");
     match h.call(0xFF, 0x00, 1, &[0, 0, 0xAA]) {
         Ok(r) => println!("     ping: HID++ {}.{} (receiver speaks 2.0)", r[0], r[1]),
@@ -426,7 +426,7 @@ fn probe_receiver(h: &mut Hidpp) {
         for (label, base) in [("pairing", 0x20u8), ("ext-pairing", 0x30), ("codename", 0x40)] {
             match h.raw(0xFF, 0x83, 0xB5, &[base + slot, 0, 0]) {
                 Ok(r) => {
-                    let shown = if label == "ext-pairing" { fp(&r, true) } else { hex(&r) };
+                    let shown = if label == "ext-pairing" { fp(&r, opts.redact) } else { hex(&r) };
                     let txt = if label == "codename" && r.len() > 2 {
                         let l = (r[1] as usize).min(r.len() - 2);
                         format!("  {:?}", String::from_utf8_lossy(&r[2..2 + l]))
@@ -446,7 +446,10 @@ fn probe_device(h: &mut Hidpp, idx: u8, opts: &Opts) {
     let ping = h.call(idx, 0x00, 1, &[0, 0, 0xAA]);
     let (maj, min) = match ping {
         Ok(r) => (r[0], r[1]),
-        Err(HErr::Hidpp10(0x08)) => { println!("   [device idx 0x{idx:02x}] no device (HID++1.0 err 0x08 UnknownDevice)"); return; }
+        Err(HErr::Hidpp10(0x08)) => {
+            println!("   [device idx 0x{idx:02x}] no device (HID++1.0 err 0x08 UnknownDevice)");
+            return;
+        }
         Err(HErr::Hidpp10(0x09)) => {
             println!("   [device idx 0x{idx:02x}] paired but unreachable/asleep (HID++1.0 err 0x09 ResourceError)");
             return;
@@ -455,7 +458,10 @@ fn probe_device(h: &mut Hidpp, idx: u8, opts: &Opts) {
             println!("   [device idx 0x{idx:02x}] HID++ 1.0 device");
             return;
         }
-        Err(HErr::Timeout) if idx != 0xFF => { println!("   [device idx 0x{idx:02x}] ping timeout"); return; }
+        Err(HErr::Timeout) if idx != 0xFF => {
+            println!("   [device idx 0x{idx:02x}] ping timeout");
+            return;
+        }
         Err(e) => {
             println!("   [device idx 0x{idx:02x}] ping: {e:?}");
             return;
@@ -478,13 +484,23 @@ fn probe_device(h: &mut Hidpp, idx: u8, opts: &Opts) {
                             let ver = r[3];
                             have.insert(id, (i, ver));
                             let mut f = vec![];
-                            if flags & 0x80 != 0 { f.push("obsolete"); }
-                            if flags & 0x40 != 0 { f.push("hidden"); }
-                            if flags & 0x20 != 0 { f.push("engineering"); }
+                            if flags & 0x80 != 0 {
+                                f.push("obsolete");
+                            }
+                            if flags & 0x40 != 0 {
+                                f.push("hidden");
+                            }
+                            if flags & 0x20 != 0 {
+                                f.push("engineering");
+                            }
                             println!(
                                 "       0x{i:02x}: 0x{id:04x} v{ver} {}{}",
                                 feature_name(id),
-                                if f.is_empty() { String::new() } else { format!(" [{}]", f.join(",")) }
+                                if f.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(" [{}]", f.join(","))
+                                }
                             );
                         }
                         Err(e) => println!("       0x{i:02x}: {e:?}"),
@@ -510,10 +526,18 @@ fn probe_device(h: &mut Hidpp, idx: u8, opts: &Opts) {
             Ok(r) => {
                 let transport = u16::from_be_bytes([r[5], r[6]]);
                 let mut t = vec![];
-                if transport & 0x01 != 0 { t.push("BT"); }
-                if transport & 0x02 != 0 { t.push("BLE"); }
-                if transport & 0x04 != 0 { t.push("eQuad/Lightspeed"); }
-                if transport & 0x08 != 0 { t.push("USB"); }
+                if transport & 0x01 != 0 {
+                    t.push("BT");
+                }
+                if transport & 0x02 != 0 {
+                    t.push("BLE");
+                }
+                if transport & 0x04 != 0 {
+                    t.push("eQuad/Lightspeed");
+                }
+                if transport & 0x08 != 0 {
+                    t.push("USB");
+                }
                 println!(
                     "     DeviceInformation v{ver}: entities={} unitId={} transports=0x{transport:04x} [{}] modelIds={} {} {} extModel=0x{:02x} caps=0x{:02x}",
                     r[0],
@@ -530,7 +554,10 @@ fn probe_device(h: &mut Hidpp, idx: u8, opts: &Opts) {
                         println!(
                             "       fw entity {ent}: type={} {}{:02x}.{:02x} build {:02x}{:02x} trPid={}",
                             f[0],
-                            f[1..4].iter().map(|&c| if c.is_ascii_graphic() { c as char } else { '-' }).collect::<String>(),
+                            f[1..4]
+                                .iter()
+                                .map(|&c| if c.is_ascii_graphic() { c as char } else { '-' })
+                                .collect::<String>(),
                             f[4],
                             f[5],
                             f[6],
@@ -558,7 +585,9 @@ fn probe_device(h: &mut Hidpp, idx: u8, opts: &Opts) {
                 match h.call(idx, fi, 1, &[name.len() as u8]) {
                     Ok(c) => {
                         let chunk: Vec<u8> = c.into_iter().take_while(|b| *b != 0).collect();
-                        if chunk.is_empty() { break; }
+                        if chunk.is_empty() {
+                            break;
+                        }
                         name.push_str(&String::from_utf8_lossy(&chunk));
                     }
                     Err(_) => break,
@@ -594,7 +623,13 @@ fn probe_device(h: &mut Hidpp, idx: u8, opts: &Opts) {
     }
     if let Some(&(fi, ver)) = have.get(&0x1000) {
         match h.call(idx, fi, 0, &[]) {
-            Ok(r) => println!("     BatteryLevelStatus v{ver}: level={}% next={}% status={} raw={}", r[0], r[1], r[2], hex(&r[..6])),
+            Ok(r) => println!(
+                "     BatteryLevelStatus v{ver}: level={}% next={}% status={} raw={}",
+                r[0],
+                r[1],
+                r[2],
+                hex(&r[..6])
+            ),
             Err(e) => println!("     BatteryLevelStatus: {e:?}"),
         }
     }

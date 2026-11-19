@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.battbar.cli</string>
+  <key>CFBundleName</key>
+  <string>battbar</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>battbar reads the battery level of Bluetooth devices that are paired with and connected to this Mac. It never scans for other devices.</string>
+</dict>
+</plist>

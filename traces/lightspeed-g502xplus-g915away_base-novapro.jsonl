@@ -1,0 +1,73 @@
+{"type":"note","text":"Reference: G HUB mouse 11 %, keyboard on Bluetooth (away from receiver), base display headset ~85-100 %"}
+{"type":"header","battbar":"0.1.0","link":"hid:046d:c547:2:ff00","kind":"hidapi","vendor_id":1133,"product_id":50503,"product":"USB Receiver","bus":"usb","collections":[[65280,1],[65280,2]]}
+{"type":"header","battbar":"0.1.0","link":"hid:1038:12e0:4:ffc0","kind":"hidapi","vendor_id":4152,"product_id":4832,"product":"Arctis Nova Pro Wireless","bus":"usb","collections":[[65472,1],[65280,1]]}
+{"type":"frame","t_ms":12,"link":"hid:1038:12e0:4:ffc0","dir":"out","hex":"06 b0"}
+{"type":"header","battbar":"0.1.0","link":"hid:046d:0afc:2:ff43","kind":"hidapi","vendor_id":1133,"product_id":2812,"product":"Yeti GX","bus":"usb","collections":[[65347,1793],[65347,1794],[65347,1796]]}
+{"type":"frame","t_ms":13,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 1b 00 00 aa"}
+{"type":"frame","t_ms":22,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 1b 04 02 aa"}
+{"type":"frame","t_ms":22,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 00 03 00"}
+{"type":"frame","t_ms":31,"link":"hid:1038:12e0:4:ffc0","dir":"in","hex":"06 b0 00 00 04 01 08 07 08 00 02 0a 00 00 08 08 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":38,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 02 00 07"}
+{"type":"frame","t_ms":38,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 02 0b 00 00 00"}
+{"type":"frame","t_ms":54,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"11 ff 02 0b 02 bb a7 5b 6e 00 08 0a fc 00 00 00 00 00 01 00"}
+{"type":"frame","t_ms":54,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 00 05 00"}
+{"type":"frame","t_ms":70,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 03 00 04"}
+{"type":"frame","t_ms":70,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 03 0b 00 00 00"}
+{"type":"frame","t_ms":86,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 03 0b 07 00 00"}
+{"type":"frame","t_ms":86,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 03 1b 00 00 00"}
+{"type":"frame","t_ms":102,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"11 ff 03 1b 59 65 74 69 20 47 58 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":102,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 03 2b 00 00 00"}
+{"type":"frame","t_ms":118,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 03 2b 0f 00 00"}
+{"type":"frame","t_ms":118,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 10 04 00"}
+{"type":"frame","t_ms":134,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 00 00 00"}
+{"type":"frame","t_ms":134,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 10 01 00"}
+{"type":"frame","t_ms":150,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 00 00 00"}
+{"type":"frame","t_ms":150,"link":"hid:046d:0afc:2:ff43","dir":"out","hex":"10 ff 00 0b 10 00 00"}
+{"type":"frame","t_ms":166,"link":"hid:046d:0afc:2:ff43","dir":"in","hex":"10 ff 00 0b 00 00 00"}
+{"type":"frame","t_ms":166,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 81 00 00 00 00"}
+{"type":"frame","t_ms":167,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 81 00 00 09 00"}
+{"type":"frame","t_ms":167,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 20 00 00"}
+{"type":"frame","t_ms":168,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 20 07 08 40 7c 11 00 01 b3 00 00 00 00 2c 00 00"}
+{"type":"frame","t_ms":168,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 30 00 00"}
+{"type":"frame","t_ms":169,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 30 bb a7 d6 de 18 40 a0 01 05 00 00 00 00 00 00"}
+{"type":"frame","t_ms":169,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 40 00 00"}
+{"type":"frame","t_ms":170,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 40 0d 47 39 31 35 20 4b 45 59 42 4f 41 52 44 00"}
+{"type":"frame","t_ms":170,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 21 00 00"}
+{"type":"frame","t_ms":171,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 21 08 08 40 99 11 00 02 b1 00 00 00 00 a4 00 00"}
+{"type":"frame","t_ms":171,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 31 00 00"}
+{"type":"frame","t_ms":172,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 31 bb a7 27 d7 0e 40 a0 00 0f 00 00 00 00 00 00"}
+{"type":"frame","t_ms":172,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 41 00 00"}
+{"type":"frame","t_ms":173,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 41 0b 47 35 30 32 20 58 20 50 4c 55 53 00 00 00"}
+{"type":"frame","t_ms":173,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 22 00 00"}
+{"type":"frame","t_ms":174,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":174,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 23 00 00"}
+{"type":"frame","t_ms":175,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":175,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 24 00 00"}
+{"type":"frame","t_ms":176,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":176,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 25 00 00"}
+{"type":"frame","t_ms":177,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 09 00"}
+{"type":"frame","t_ms":177,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 00 1b 00 00 aa"}
+{"type":"frame","t_ms":178,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 01 8f 00 1b 08 00"}
+{"type":"frame","t_ms":178,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 1b 00 00 aa"}
+{"type":"frame","t_ms":1621,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 1b 04 02 aa 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1621,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 0b 00 03 00"}
+{"type":"frame","t_ms":1629,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 0b 02 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1629,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 02 0b 00 00 00"}
+{"type":"frame","t_ms":1638,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 02 0b 0c bb a7 27 d7 00 0c 40 99 c0 95 00 00 00 01 00"}
+{"type":"frame","t_ms":1638,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 0b 00 05 00"}
+{"type":"frame","t_ms":1647,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 0b 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1647,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 03 0b 00 00 00"}
+{"type":"frame","t_ms":1656,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 03 0b 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1656,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 03 1b 00 00 00"}
+{"type":"frame","t_ms":1665,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 03 1b 47 35 30 32 20 58 20 50 4c 55 53 00 00 00 00 00"}
+{"type":"frame","t_ms":1665,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 03 2b 00 00 00"}
+{"type":"frame","t_ms":1674,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 03 2b 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1674,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 00 0b 10 04 00"}
+{"type":"frame","t_ms":1683,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 00 0b 06 00 05 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1683,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 06 0b 00 00 00"}
+{"type":"frame","t_ms":1692,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 06 0b 0f 0f 01 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":1692,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 02 06 1b 00 00 00"}
+{"type":"frame","t_ms":1701,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 02 06 1b 0b 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"note","text":"poll 1: Arctis Nova Pro Wireless = ~100%, coarse"}
+{"type":"note","text":"poll 1: G502 X PLUS = 11%, exact"}
+{"type":"note","text":"poll 1: G915 Wireless Mechanical Gaming Keyboard = disconnected"}

@@ -1,0 +1,24 @@
+[package]
+name = "battbar-cli"
+description = "battbar command line: probe, dump, record"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "battbar"
+path = "src/main.rs"
+
+[dependencies]
+battbar-core = { workspace = true }
+battbar-hidpp = { workspace = true }
+battbar-steelseries = { workspace = true }
+battbar-bt-system = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+battbar-macos = { workspace = true }

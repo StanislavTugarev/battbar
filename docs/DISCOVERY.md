@@ -314,3 +314,22 @@ Second round (Stage 0 review), also reflected in [`SPEC.md`](SPEC.md):
    charged" notification, off by default.
 10. HID++ usage pages in the device database, not in code.
 11. Input Monitoring: verify on the `.app` in Stage 2; if not needed, never request it.
+
+## Stage 1 confirmations (2026-11-19)
+
+Measured with the Stage 1 code and background loggers on the reference hardware.
+
+| Hypothesis | Result |
+|---|---|
+| Base byte 5 = "headset also on Bluetooth" | **Confirmed.** Headset Bluetooth on: bytes 4/5 = `04 01`; turned off on the headset: `01 00`. |
+| Base byte 7 = spare battery, 0–8 | **Supported**: rose 4 → 6 → 7 over ~1 h while the spare charged in the base slot. Not yet seen to stop at 8; implemented as component `spare` (coarse). |
+| IOBluetooth `batteryPercentSingle` step | **1 %**: 85 → 84 → 83 over ~10 min of use → `precision = exact` (HFP 1.7 battery indicator, not `AT+IPHONEACCEV`). |
+| Receiver extended pairing register holds the unit ID | **Confirmed**: 0xB5/0x30+n bytes 1–4 equal HID++ 0x0003 unit ID for both devices, so a keyboard away from the receiver still carries its identity. |
+| Keyboard switched Lightspeed → BLE → Lightspeed stays one device | **Confirmed** live with `battbar probe`. |
+| Headset via base + Bluetooth is one device | **Confirmed** live (base flag + `bt_name_patterns`). |
+
+Bluetooth permission for a CLI: a plain binary started from a terminal is killed by
+TCC; with an embedded `__info_plist` **and** re-launched as its own responsible process
+(`posix_spawn` + `responsibility_spawnattrs_setdisclaim`) it gets its own permission
+prompt and works. Each rebuilt ad-hoc-signed binary is a new identity for TCC and asks
+again.

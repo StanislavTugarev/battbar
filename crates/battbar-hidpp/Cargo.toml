@@ -1,0 +1,17 @@
+[package]
+name = "battbar-hidpp"
+description = "battbar: Logitech HID++ 2.0 battery provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+battbar-core = { workspace = true }
+battbar-hid = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+battbar-macos = { workspace = true }

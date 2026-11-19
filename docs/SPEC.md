@@ -65,8 +65,9 @@ Keyboard and headset are the test devices for both transports. Measured details 
     `system_profiler SPBluetoothDataType -json` only as a fallback for BLE.
   - `hidapi` is used only for USB devices (receivers, base stations, wired devices).
 - **The CLI lives inside the `.app` bundle** (`Contents/MacOS/battbar`), symlinked into
-  `PATH` by the Homebrew cask, so macOS attributes Bluetooth access to the app
-  (a standalone CLI is killed by TCC when it touches Bluetooth).
+  `PATH` by the Homebrew cask. It also embeds its Info.plist and re-launches itself as
+  its own responsible process before touching Bluetooth, because TCC otherwise
+  attributes the access to the terminal and kills the process.
 
 ## Architecture
 
@@ -123,7 +124,7 @@ Lightspeed to Bluetooth). The core merges such sources into one device and one i
 - Headsets behind a base station (the Nova Pro has no VID/PID over Bluetooth — vendor
   0x000A / product 0xFFFF, Discovery §4.5) are merged automatically **only if both**
   hold: (a) the base reports that its headset is currently on Bluetooth (base status
-  bytes 4–5, to be confirmed in Stage 1), and (b) the Bluetooth device name matches
+  byte 5, confirmed in Stage 1), and (b) the Bluetooth device name matches
   the model's `bt_name_patterns` in `devices/*.toml`. Otherwise only manual merge.
 - When the same unit ID is reachable on another transport the devices are merged;
   there is no separate UI state for "paired on the receiver but currently elsewhere".
@@ -188,8 +189,8 @@ protocol requires no Rust changes.
 - Over Bluetooth the headset battery comes from `battbar-bt-system`. When the headset
   is connected through the base and over Bluetooth at the same time and the merge
   conditions hold, it is one device; percent and flags follow the merge rules above.
-- Spare battery charging in the base (hypothesis: status byte 7, 0–8): if confirmed in
-  Stage 1, it is the component `spare` of the headset device, not a separate icon.
+- Spare battery charging in the base (status byte 7, 0–8; supported by Stage 1
+  measurements): component `spare` of the headset device, not a separate icon.
   Optional notification "spare battery fully charged", off by default.
 
 ### Bluetooth (system battery)
@@ -201,9 +202,8 @@ protocol requires no Rust changes.
   `batteryPercentLeft` / `Right` / `Case` as components. These are private properties:
   check `respondsToSelector:` before every access. Property missing, or value 0 on a
   connected device → "battery not reported", never a crash and never 0 %.
-- Precision of the classic audio value is `coarse` until its step is measured. If the
-  step turns out to be 1 % (likely the HFP 1.7 battery HF indicator rather than
-  `AT+IPHONEACCEV`), it becomes `exact`.
+- Precision of the classic audio value: `exact` (1 % steps measured in Stage 1, HFP 1.7
+  battery HF indicator).
 - Battery from `AT+IPHONEACCEV` (10 % steps) → `precision = coarse`.
 - Paired but not connected → `disconnected`, no percentage.
 - Connected but no battery reported → shown in the menu as "battery not reported", no
@@ -239,7 +239,7 @@ mention it.
 
 See [`DISCOVERY.md`](DISCOVERY.md).
 
-### Stage 1 — Core + CLI
+### Stage 1 — Core + CLI ✔
 
 - Workspace, traits, transports with record/replay, source merging, device database,
   all providers.
@@ -308,6 +308,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - Commit at the end of every stage and before large refactorings.
 
 ## Revision history
+
+- **2026-11-19** — Stage 1: base byte 5 confirmed as "headset on Bluetooth"; spare
+  battery byte 7 implemented as component; classic audio precision `exact`; CLI
+  relaunches itself as responsible process for Bluetooth; trace unit IDs pseudonymized
+  by `battbar record`.
 
 - **2026-11-19** — Stage 0 review: classic BT audio via IOBluetooth only (guarded
   private properties, components, precision rule); merged reading takes percent from the

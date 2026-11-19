@@ -1,10 +1,24 @@
 [workspace]
 resolver = "2"
-members = ["tools/discovery"]
+members = ["crates/*", "tools/discovery"]
+default-members = ["crates/*"]
 
 [workspace.package]
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/OWNER/battbar"
 rust-version = "1.80"
+
+[workspace.dependencies]
+battbar-core = { path = "crates/battbar-core" }
+battbar-hid = { path = "crates/battbar-hid" }
+battbar-hidpp = { path = "crates/battbar-hidpp" }
+battbar-steelseries = { path = "crates/battbar-steelseries" }
+battbar-macos = { path = "crates/battbar-macos" }
+battbar-bt-system = { path = "crates/battbar-bt-system" }
+hidapi = "2.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+thiserror = "2"

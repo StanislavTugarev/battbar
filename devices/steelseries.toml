@@ -1,0 +1,12 @@
+# SteelSeries headsets with native support. Protocol details ported from
+# HeadsetControl (GPL-3.0).
+
+[[device]]
+name = "Arctis Nova Pro Wireless"
+kind = "headset"
+protocol = "steelseries-nova-pro"
+vendor_id = 0x1038
+usb_pid = [0x12E0, 0x12E5]
+vendor_usage_page = 0xFFC0
+bt_name_patterns = ["Arctis Nova Pro*"]
+notes = "Base station status report 06 b0. 0x12E5 is the Xbox variant (untested)."

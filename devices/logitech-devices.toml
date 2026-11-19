@@ -1,0 +1,22 @@
+# Logitech HID++ 2.0 devices. Devices that are not listed still work: names, type and
+# battery features are read from the device itself. Entries add PIDs per transport,
+# calibrated voltage curves and notes.
+
+[[device]]
+name = "G915 Wireless Mechanical Gaming Keyboard"
+kind = "keyboard"
+protocol = "hidpp20"
+vendor_id = 0x046D
+wpid = [0x407C]
+ble_pid = [0xB354]
+usb_pid = [0xC33E]
+notes = "Battery via 0x1001 (voltage) only; no serial number. Verified on Lightspeed and BLE (GATT)."
+
+[[device]]
+name = "G502 X PLUS"
+kind = "mouse"
+protocol = "hidpp20"
+vendor_id = 0x046D
+wpid = [0x4099]
+usb_pid = [0xC095]
+notes = "Battery via 0x1004 (Unified Battery), exact percentage. Verified on Lightspeed."

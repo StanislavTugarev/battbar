@@ -1,0 +1,22 @@
+# HID++ transport configuration (Logitech).
+# Usage pages and usages that carry HID++ collections. The usage low byte selects
+# the report length: 0x01 short (0x10), 0x02 long (0x11), 0x04 very long (0x12).
+[hidpp]
+vendor_ids = [0x046D]
+usage_pages = [0xFF00, 0xFF43]
+short_usage = 0x01
+long_usage = 0x02
+very_long_usage = 0x04
+gatt_service = "00010000-0000-1000-8000-011F2000046D"
+gatt_characteristic = "00010001-0000-1000-8000-011F2000046D"
+
+# Generic Li-ion discharge curve used for 0x1001 (Battery Voltage) when a model has no
+# calibrated curve. Points as published by Solaar (GPL-2.0-or-later).
+[[curve]]
+id = "li-ion-default"
+precision = "approximate"
+source = "Solaar default Li-ion table"
+points = [
+  [4186, 100], [4067, 90], [3989, 80], [3922, 70], [3859, 60], [3811, 50],
+  [3778, 40], [3751, 30], [3717, 20], [3671, 10], [3646, 5], [3579, 2], [3500, 0],
+]

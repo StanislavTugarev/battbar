@@ -1,0 +1,15 @@
+[package]
+name = "battbar-bt-system"
+description = "battbar: battery that macOS already knows for Bluetooth devices"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+battbar-core = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+battbar-macos = { workspace = true }
