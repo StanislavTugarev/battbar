@@ -15,7 +15,7 @@ hardware.
 Run `battbar probe`. An affected device looks like this:
 
 ```
-M705 Marathon  [Mouse]  n/r (HID++ 1.0)
+Example Mouse  [Mouse]  n/r (HID++ 1.0)
     receiver       HID++ 1.0                  n/r (HID++ 1.0)
 ```
 
@@ -32,7 +32,7 @@ M705 Marathon  [Mouse]  n/r (HID++ 1.0)
    battbar record --out ~/Desktop/battbar-trace.jsonl --polls 3 --note "Options+ shows: good / 50 %"
    ```
 
-4. Reply here with both files attached, and tell us the device model and, if you can,
+4. Comment here with both files attached, and tell us the device model and, if you can,
    the battery type (AA alkaline, AA NiMH, AAA, built-in).
 
 If you can, record twice: once with fresh batteries and once with used ones, each with
