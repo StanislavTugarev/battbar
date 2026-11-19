@@ -53,6 +53,8 @@ jobs:
               "target/aarch64-apple-darwin/release/$b" "target/x86_64-apple-darwin/release/$b"
           done
           lipo -info target/universal/battbar-app
+      - name: No development hooks in release binaries
+        run: scripts/check-no-dev-hooks.sh target/universal/battbar-app target/universal/battbar
 
       # Signing: self-signed "battbar Release" certificate from secrets. Developer ID
       # signing and notarization can replace these two steps later.

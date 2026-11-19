@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Added
 
 - Voltage calibration per device: a keyboard or mouse that reports only its voltage
@@ -21,6 +23,12 @@ All notable changes to this project are documented here. The format follows
   *Update available: vX.Y.Z* in the menu (the `brew upgrade` command for Homebrew
   installs, otherwise the release page) and one notification per version.
 - README: *Updating* section for Homebrew and the disk image.
+
+### Changed
+
+- Privacy statement: battbar is no longer "no network access" but "no telemetry, one
+  opt-in request" (the update check above); a test fails if any other code uses the
+  network.
 
 ## [0.2.0] - 2026-11-19
 
@@ -106,6 +114,7 @@ All notable changes to this project are documented here. The format follows
 - **HID++ 1.0 devices** behind a receiver are listed without a battery value.
 - **Bolt receivers** are untested.
 
-[Unreleased]: https://github.com/StanislavTugarev/battbar/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/StanislavTugarev/battbar/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/StanislavTugarev/battbar/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/StanislavTugarev/battbar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/StanislavTugarev/battbar/releases/tag/v0.1.0

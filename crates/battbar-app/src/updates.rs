@@ -110,6 +110,24 @@ impl PartialOrd for Version {
     }
 }
 
+/// The version compared with the latest release: the crate version.
+///
+/// Development builds only: `BATTBAR_DEV_FAKE_VERSION=0.1.0` pretends to be that
+/// version, to try the "Update available" flow against the real latest release. The
+/// code (and the variable name) is compiled out of release builds; CI checks the
+/// release binaries for it (`scripts/check-no-dev-hooks.sh`).
+pub fn running_version() -> Version {
+    #[cfg(debug_assertions)]
+    {
+        if let Some(v) = std::env::var("BATTBAR_DEV_FAKE_VERSION").ok().and_then(|s| Version::parse(&s)) {
+            if battbar_macos::bundle::is_dev_build() {
+                return v;
+            }
+        }
+    }
+    Version::current()
+}
+
 /// Release page for a version (built locally, not taken from the response).
 pub fn release_page(v: &Version) -> String {
     format!("https://github.com/{OWNER_REPO}/releases/tag/v{v}")
@@ -124,14 +142,38 @@ struct ApiRelease {
     draft: bool,
 }
 
-/// The released version in a `releases/latest` response; `None` for drafts,
-/// pre-releases and tags that are not plain `vX.Y.Z`.
+/// Longest accepted tag; real ones are like `v0.3.0`.
+const MAX_TAG_LEN: usize = 32;
+
+/// A release tag in the strict form `^v\d+\.\d+\.\d+$` (ASCII digits only, nothing
+/// before or after). Anything else is an error: the check fails and nothing is shown.
+pub fn parse_release_tag(tag: &str) -> Result<Version, String> {
+    let bad = || Err(format!("unexpected release tag ({} bytes)", tag.len()));
+    if tag.len() > MAX_TAG_LEN {
+        return bad();
+    }
+    let Some(rest) = tag.strip_prefix('v') else { return bad() };
+    let parts: Vec<&str> = rest.split('.').collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit())) {
+        return bad();
+    }
+    let n = |p: &str| p.parse::<u64>().map_err(|_| "release tag number out of range".to_string());
+    Ok(Version {
+        major: n(parts[0])?,
+        minor: n(parts[1])?,
+        patch: n(parts[2])?,
+        pre: vec![],
+    })
+}
+
+/// The released version in a `releases/latest` response. Drafts and pre-releases are
+/// ignored (`None`); a tag that is not strictly `vX.Y.Z` is an error.
 pub fn parse_latest(json: &str) -> Result<Option<Version>, String> {
     let r: ApiRelease = serde_json::from_str(json).map_err(|e| format!("unexpected response: {e}"))?;
     if r.prerelease || r.draft {
         return Ok(None);
     }
-    Ok(Version::parse(&r.tag_name).filter(|v| !v.is_prerelease()))
+    parse_release_tag(&r.tag_name).map(Some)
 }
 
 /// Something that can fetch a URL. The app uses [`Curl`]; tests count calls.
@@ -255,11 +297,35 @@ pub fn available(s: &Settings, current: &Version) -> Option<Version> {
     s.available_update.as_deref().and_then(Version::parse).filter(|v| v > current)
 }
 
+/// Default Homebrew prefixes: Apple silicon, then Intel.
+pub const DEFAULT_HOMEBREW_PREFIXES: [&str; 2] = ["/opt/homebrew", "/usr/local"];
+
+/// Homebrew prefixes to look in, without running `brew`: `$HOMEBREW_PREFIX` first when
+/// it is set to an absolute path (shells set up by `brew shellenv`; apps started from
+/// the Dock usually do not have it), then the two defaults.
+pub fn homebrew_prefixes(env_prefix: Option<std::ffi::OsString>) -> Vec<std::path::PathBuf> {
+    let mut v: Vec<std::path::PathBuf> = env_prefix
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .into_iter()
+        .collect();
+    for d in DEFAULT_HOMEBREW_PREFIXES {
+        let d = std::path::PathBuf::from(d);
+        if !v.contains(&d) {
+            v.push(d);
+        }
+    }
+    v
+}
+
+/// Whether the cask is installed under any of `prefixes` (`<prefix>/Caskroom/battbar`).
+pub fn installed_with_homebrew_in(prefixes: &[std::path::PathBuf]) -> bool {
+    prefixes.iter().any(|p| p.join("Caskroom/battbar").is_dir())
+}
+
 /// Installed with Homebrew: the cask has a Caskroom directory.
 pub fn installed_with_homebrew() -> bool {
-    ["/opt/homebrew/Caskroom/battbar", "/usr/local/Caskroom/battbar"]
-        .iter()
-        .any(|p| std::path::Path::new(p).is_dir())
+    installed_with_homebrew_in(&homebrew_prefixes(std::env::var_os("HOMEBREW_PREFIX")))
 }
 
 #[cfg(test)]
@@ -390,14 +456,119 @@ mod tests {
         assert_eq!(parse_latest(&j("v0.3.0", false, false)).unwrap(), Version::parse("0.3.0"));
         assert_eq!(parse_latest(&j("v0.3.0", true, false)).unwrap(), None);
         assert_eq!(parse_latest(&j("v0.3.0", false, true)).unwrap(), None);
-        assert_eq!(parse_latest(&j("v0.3.0-rc.1", false, false)).unwrap(), None);
-        assert_eq!(parse_latest(&j("nightly", false, false)).unwrap(), None);
+        assert_eq!(parse_latest(&j("v0.3.0-rc.1", true, false)).unwrap(), None);
+        // Not flagged as pre-release but not a plain vX.Y.Z tag: the check fails.
+        assert!(parse_latest(&j("v0.3.0-rc.1", false, false)).is_err());
+        assert!(parse_latest(&j("nightly", false, false)).is_err());
         assert!(parse_latest("<html>").is_err());
+        assert!(parse_latest(r#"{"tag_name":5}"#).is_err());
         // The page is built from the version, never from html_url.
         assert_eq!(
             release_page(&Version::parse("0.3.0").unwrap()),
             "https://github.com/StanislavTugarev/battbar/releases/tag/v0.3.0"
         );
+    }
+
+    #[test]
+    fn release_tag_must_be_strictly_v_x_y_z() {
+        assert_eq!(parse_release_tag("v0.3.0"), Ok(Version::parse("0.3.0").unwrap()));
+        assert_eq!(parse_release_tag("v10.20.30").unwrap().to_string(), "10.20.30");
+        let long = format!("v{}.0.0", "9".repeat(10_000));
+        let overflow = format!("v{}.0.0", "9".repeat(25)); // short enough, but > u64
+        let junk = [
+            "",
+            "v",
+            "0.3.0",
+            "V0.3.0",
+            "v0.3",
+            "v0.3.0.1",
+            "v0..3",
+            "v.0.3.0",
+            "v0.3.0-rc.1",
+            "v0.3.0+build",
+            " v0.3.0",
+            "v0.3.0 ",
+            "v0.3.0\n",
+            "v0.3.0\t",
+            "v 0.3.0",
+            "../v0.3.0",
+            "v0.3.0/../../evil",
+            "v0.3.0/",
+            "v0.3.0?x=1",
+            "v0.3.0#a",
+            "v-1.0.0",
+            "v+1.0.0",
+            "v0x1.0.0",
+            "v\u{0660}.\u{0663}.\u{0660}", // Arabic-Indic digits
+            "v\u{FF10}.\u{FF13}.\u{FF10}", // fullwidth digits
+            "\u{FF56}0.3.0",               // fullwidth v
+            "v0.3.0\u{200B}",              // zero-width space
+            "v\u{0}0.3.0",
+            "v0.3.0\u{0}",
+            "в0.3.0", // Cyrillic
+            long.as_str(),
+            overflow.as_str(),
+        ];
+        for t in junk {
+            assert!(parse_release_tag(t).is_err(), "{t:?} accepted");
+            // Through the API response as well, and the error never echoes the tag.
+            let body = serde_json::json!({ "tag_name": t, "prerelease": false, "draft": false }).to_string();
+            let e = parse_latest(&body).unwrap_err();
+            assert!(t.len() < 4 || !e.contains(t), "error echoes the tag: {e}");
+        }
+    }
+
+    #[test]
+    fn homebrew_prefixes_cover_both_defaults_and_the_environment() {
+        use std::path::PathBuf;
+        let defaults: Vec<PathBuf> = DEFAULT_HOMEBREW_PREFIXES.iter().map(PathBuf::from).collect();
+        assert_eq!(homebrew_prefixes(None), defaults);
+        assert_eq!(homebrew_prefixes(Some("relative/brew".into())), defaults);
+        assert_eq!(
+            homebrew_prefixes(Some("/usr/local".into())),
+            vec![PathBuf::from("/usr/local"), PathBuf::from("/opt/homebrew")],
+            "environment first, no duplicates"
+        );
+        let custom = homebrew_prefixes(Some("/Users/x/homebrew".into()));
+        assert_eq!(custom[0], PathBuf::from("/Users/x/homebrew"));
+        assert_eq!(&custom[1..], &defaults[..]);
+    }
+
+    #[test]
+    fn homebrew_install_found_under_either_prefix() {
+        let root = std::env::temp_dir().join(format!("battbar-brew-test-{}", std::process::id()));
+        let arm = root.join("opt/homebrew");
+        let intel = root.join("usr/local");
+        let custom = root.join("custom");
+        for p in [&arm, &intel, &custom] {
+            std::fs::create_dir_all(p.join("Caskroom/other")).unwrap();
+        }
+        let all = vec![arm.clone(), intel.clone(), custom.clone()];
+        assert!(!installed_with_homebrew_in(&all), "other casks do not count");
+        for p in [&arm, &intel, &custom] {
+            std::fs::create_dir_all(p.join("Caskroom/battbar/0.2.0")).unwrap();
+            assert!(installed_with_homebrew_in(&all), "{}", p.display());
+            assert!(installed_with_homebrew_in(std::slice::from_ref(p)));
+            std::fs::remove_dir_all(p.join("Caskroom/battbar")).unwrap();
+        }
+        // A file named battbar is not an installation.
+        std::fs::write(intel.join("Caskroom/battbar"), "").unwrap();
+        assert!(!installed_with_homebrew_in(&all));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn malformed_tag_shows_nothing() {
+        let mut s = Settings {
+            check_for_updates: true,
+            ..Settings::default()
+        };
+        let body = r#"{"tag_name":"v9.9.9-evil","prerelease":false,"draft":false}"#;
+        let o = finish(&mut s, 0, &Version::parse("0.3.0").unwrap(), parse_latest(body));
+        assert!(matches!(o, Outcome::Failed(_)));
+        assert_eq!(s.available_update, None);
+        assert_eq!(s.update_notified, None);
+        assert_eq!(available(&s, &Version::parse("0.3.0").unwrap()), None);
     }
 
     #[test]

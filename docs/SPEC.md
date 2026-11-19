@@ -310,17 +310,23 @@ reports its status for bug reports.
     environment. Headers: `Host`, `User-Agent: battbar/<version>`,
     `Accept: application/vnd.github+json` — no token, cookies or identifiers. GitHub
     sees the IP address and the User-Agent.
-  - Only `tag_name`, `prerelease` and `draft` are read; drafts, pre-releases and
-    non-`vX.Y.Z` tags are ignored; compared by semver with the running version. The
-    release page URL is built from the version, never taken from the response.
+  - Only `tag_name`, `prerelease` and `draft` are read; drafts and pre-releases are
+    ignored. `tag_name` must match `^v\d+\.\d+\.\d+$` exactly (ASCII digits, at most
+    32 bytes, no whitespace or other characters); anything else fails the check and
+    nothing is shown. Compared by semver with the running version. The release page URL
+    is built from the version, never taken from the response.
   - Newer version → menu item "Update available: vX.Y.Z…": Homebrew install (a
-    `Caskroom/battbar` directory exists) → dialog with `brew upgrade --cask battbar`
+    `Caskroom/battbar` directory under `$HOMEBREW_PREFIX` if set, `/opt/homebrew` or
+    `/usr/local`; `brew` is never run) → dialog with `brew upgrade --cask battbar`
     (Copy Command / Release Notes); otherwise → open the release page (DMG). One
     notification per version.
   - Off → no request at all, and a result that arrives after turning it off is
     dropped. Tests: no request while off (counting fetcher), once per day, notification
     once per version; static test: no other code uses curl, URL loading APIs or
     sockets, and no crate depends on an HTTP client.
+  - Development builds only: `BATTBAR_DEV_FAKE_VERSION` replaces the running version
+    (to try "Update available"); behind `cfg(debug_assertions)`, and CI checks that
+    release binaries do not contain it.
 
 ## Stages
 
@@ -460,7 +466,7 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Revision history
 
-- **2026-11-19** — Unreleased (0.3.0): per-unit voltage calibration for 0x1001 devices
+- **2026-11-19** — 0.3.0: per-unit voltage calibration for 0x1001 devices
   from simultaneous Bluetooth firmware percentages (moved from the backlog); opt-in
   daily update check (the only network request; replaces "no network requests");
   Sparkle added to the backlog.

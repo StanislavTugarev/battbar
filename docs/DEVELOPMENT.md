@@ -24,6 +24,19 @@ open target/battbar.app
 BATTBAR_LOG=1 target/battbar.app/Contents/MacOS/battbar-app   # with a poll log on stderr
 ```
 
+**Trying the update check** (development builds only): `BATTBAR_DEV_FAKE_VERSION`
+makes the app compare the latest release with that version instead of its own, so
+*Update available* appears against the real GitHub release. Turn on Settings → Check
+for Updates in the dev app (it then checks right away; `BATTBAR_LOG=1` prints the
+outcome). The code is behind `cfg(debug_assertions)` and is compiled out of release
+builds; CI fails if a release binary contains the variable name
+(`scripts/check-no-dev-hooks.sh`, with a self-test on a debug build).
+
+```
+open --env BATTBAR_DEV_FAKE_VERSION=0.1.0 target/battbar.app
+BATTBAR_LOG=1 BATTBAR_DEV_FAKE_VERSION=0.1.0 target/battbar.app/Contents/MacOS/battbar-app
+```
+
 Release and universal (arm64 + x86_64) builds are made **only in CI**
 (`.github/workflows/release.yml`); locally `scripts/bundle.sh` builds a debug bundle
 for the host architecture.

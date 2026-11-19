@@ -533,7 +533,7 @@ impl App {
 
     fn on_update_check(&mut self, r: Result<Option<updates::Version>, String>) {
         self.update_in_flight = false;
-        let outcome = updates::finish(&mut self.settings, unix_now(), &updates::Version::current(), r);
+        let outcome = updates::finish(&mut self.settings, unix_now(), &updates::running_version(), r);
         self.save();
         if std::env::var_os("BATTBAR_LOG").is_some() {
             eprintln!("update check: {outcome:?}");
@@ -984,7 +984,7 @@ impl App {
         if matches!(self.bt_authorization, 1 | 2) {
             self.add(&menu, "Bluetooth access needed…", Some(Action::OpenBluetoothSettings), false, "");
         }
-        if let Some(v) = updates::available(&self.settings, &updates::Version::current()) {
+        if let Some(v) = updates::available(&self.settings, &updates::running_version()) {
             self.add(
                 &menu,
                 &format!("Update available: v{v}…"),

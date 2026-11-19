@@ -29,6 +29,12 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests (recorded traces, no hardware)
         run: cargo test --workspace
+      - name: Development hooks only in debug builds
+        run: |
+          cargo build -p battbar-app
+          scripts/check-no-dev-hooks.sh --expect-present target/debug/battbar-app
+          cargo build --release -p battbar-app -p battbar-cli
+          scripts/check-no-dev-hooks.sh target/release/battbar-app target/release/battbar
       - name: SUPPORTED_DEVICES.md is up to date
         run: cargo xtask supported-devices --check
       - name: No certificates or keys in the repository
