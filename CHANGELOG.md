@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-19
+
 ### Added
 
 - Launch at Login: asked once on first start ("Not Now" is final; the switch stays in
@@ -81,5 +83,6 @@ All notable changes to this project are documented here. The format follows
 - **HID++ 1.0 devices** behind a receiver are listed without a battery value.
 - **Bolt receivers** are untested.
 
-[Unreleased]: https://github.com/StanislavTugarev/battbar/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/StanislavTugarev/battbar/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/StanislavTugarev/battbar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/StanislavTugarev/battbar/releases/tag/v0.1.0
