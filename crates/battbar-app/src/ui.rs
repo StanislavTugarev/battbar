@@ -113,13 +113,33 @@ pub fn source_lines(d: &Device) -> Vec<String> {
         .collect()
 }
 
+/// A device seen only by the system Bluetooth provider.
+pub fn bluetooth_only(d: &Device) -> bool {
+    !d.sources.is_empty() && d.sources.iter().all(|s| s.provider == "bt-system")
+}
+
+/// Hidden unless the user asks for it: Bluetooth devices without a battery value
+/// (option), and disconnected Bluetooth devices that never reported a battery.
+pub fn hidden_by_default(d: &Device, settings: &Settings) -> bool {
+    if settings.shown.contains(&d.id) {
+        return false;
+    }
+    (d.reading.status == Status::NotReported && !settings.show_unreported)
+        || (d.reading.status == Status::Disconnected && bluetooth_only(d) && !settings.ever_reported.contains(&d.id))
+}
+
+pub fn is_visible(d: &Device, settings: &Settings) -> bool {
+    !settings.hidden.contains(&d.id) && !hidden_by_default(d, settings)
+}
+
 /// Devices that get their own status item.
 pub fn visible<'a>(devices: &'a [Device], settings: &Settings) -> Vec<&'a Device> {
-    devices
-        .iter()
-        .filter(|d| !settings.hidden.contains(&d.id))
-        .filter(|d| settings.show_unreported || d.reading.status != Status::NotReported)
-        .collect()
+    devices.iter().filter(|d| is_visible(d, settings)).collect()
+}
+
+/// Devices listed under "Other Devices".
+pub fn others<'a>(devices: &'a [Device], settings: &Settings) -> Vec<&'a Device> {
+    devices.iter().filter(|d| !is_visible(d, settings)).collect()
 }
 
 #[cfg(test)]
@@ -167,6 +187,43 @@ mod tests {
     #[test]
     fn gamepad_has_its_own_icon() {
         assert_eq!(symbol(DeviceKind::Gamepad), "gamecontroller.fill");
+    }
+
+    fn bt(status: Status) -> Device {
+        let mut d = dev(DeviceKind::Gamepad, Reading::with_status(status));
+        d.sources = vec![DeviceReport {
+            provider: "bt-system".into(),
+            source_key: "classic:x".into(),
+            source: "".into(),
+            name: "Pad".into(),
+            kind: DeviceKind::Gamepad,
+            transport: Transport::BluetoothClassic,
+            identity: vec![],
+            hints: vec![],
+            reading: d.reading.clone(),
+            components: vec![],
+        }];
+        d
+    }
+
+    #[test]
+    fn disconnected_bluetooth_never_reported_is_hidden_until_shown() {
+        let devs = vec![bt(Status::Disconnected)];
+        let mut s = Settings::default();
+        assert!(visible(&devs, &s).is_empty());
+        assert_eq!(others(&devs, &s).len(), 1);
+        s.ever_reported.push("x".into());
+        assert_eq!(visible(&devs, &s).len(), 1, "reported once: shown dimmed when away");
+        s.ever_reported.clear();
+        s.shown.push("x".into());
+        assert_eq!(visible(&devs, &s).len(), 1, "explicit Show in Menu Bar");
+    }
+
+    #[test]
+    fn disconnected_receiver_devices_stay_visible() {
+        let mut d = bt(Status::Disconnected);
+        d.sources[0].provider = "hidpp".into();
+        assert_eq!(visible(&[d], &Settings::default()).len(), 1);
     }
 
     #[test]

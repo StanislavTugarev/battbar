@@ -27,8 +27,15 @@ pub struct Settings {
     pub headsetcontrol_fallback: bool,
     /// Show Bluetooth devices that are connected but report no battery.
     pub show_unreported: bool,
-    /// Device IDs hidden from the menu bar.
+    /// Device IDs hidden from the menu bar by the user.
     pub hidden: Vec<String>,
+    /// Device IDs the user chose to show although they would be hidden by default.
+    pub shown: Vec<String>,
+    /// Device IDs that reported a battery value at least once. Disconnected Bluetooth
+    /// devices that never did are hidden by default.
+    pub ever_reported: Vec<String>,
+    /// Hashed identity keys known to belong to the same device (IdentityMemory).
+    pub identity_memory: Vec<Vec<String>>,
     pub merge: MergeConfig,
     pub learned_links: Vec<LearnedLink>,
 }
@@ -42,6 +49,9 @@ impl Default for Settings {
             headsetcontrol_fallback: true,
             show_unreported: false,
             hidden: vec![],
+            shown: vec![],
+            ever_reported: vec![],
+            identity_memory: vec![],
             merge: MergeConfig::default(),
             learned_links: vec![],
         }

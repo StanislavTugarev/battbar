@@ -110,3 +110,81 @@ fn ble_battery_service_beats_voltage_curve_but_keeps_flags() {
     assert_eq!(d.reading.charging, Some(false));
     assert!(d.reading.voltage_mv.is_some());
 }
+
+/// Cold start, no identity memory: in the first poll the BLE Battery Service already
+/// answers but the GATT HID++ link is not open yet, so the keyboard looks like two
+/// devices (receiver slot + BLE). The new-device gate must not show the BLE-only one;
+/// in the follow-up poll the GATT link merges everything into one keyboard.
+#[test]
+fn cold_start_bas_before_gatt_never_shows_two_keyboards() {
+    use std::time::{Duration, Instant};
+    let ble = IdentityKey::Stable {
+        namespace: "ble".into(),
+        value: "p1".into(),
+    };
+    let receiver_kb: DeviceReport = poll(&[USB]).into_iter().find(|r| r.kind == DeviceKind::Keyboard).unwrap();
+    let mut gatt_kb: DeviceReport = poll(&[BLE]).into_iter().find(|r| r.transport == Transport::BluetoothLe).unwrap();
+    gatt_kb.identity.push(ble.clone());
+    let mut bas = gatt_kb.clone();
+    bas.provider = "bt-system".into();
+    bas.source_key = "ble:p1".into();
+    bas.name = "G915 KEYBOARD".into();
+    bas.identity = vec![ble];
+    bas.reading = Reading::ok(100, Precision::Exact);
+
+    let mut gate = NewDeviceGate::default();
+    let mut memory = IdentityMemory::default();
+    let mut shown_ever: Vec<String> = vec![];
+    let t0 = Instant::now();
+    let polls = [
+        (t0, vec![receiver_kb.clone(), bas.clone()]),
+        (t0 + Duration::from_secs(4), vec![receiver_kb.clone(), bas.clone(), gatt_kb.clone()]),
+        (
+            t0 + Duration::from_secs(64),
+            vec![receiver_kb.clone(), bas.clone(), gatt_kb.clone()],
+        ),
+    ];
+    for (now, mut reports) in polls {
+        memory.learn(&reports);
+        memory.augment(&mut reports);
+        let devices = merge(reports, &MergeConfig::default());
+        for id in gate.admit(now, &devices, true) {
+            if !shown_ever.contains(&id) {
+                shown_ever.push(id);
+            }
+        }
+    }
+    assert_eq!(shown_ever.len(), 1, "{shown_ever:?}");
+    assert!(shown_ever[0].starts_with("hidpp:"));
+}
+
+#[test]
+fn stored_identity_memory_merges_without_gatt_link() {
+    // Warm start: memory from a previous session; GATT link not open yet.
+    let ble = IdentityKey::Stable {
+        namespace: "ble".into(),
+        value: "p1".into(),
+    };
+    let receiver_kb: DeviceReport = poll(&[USB]).into_iter().find(|r| r.kind == DeviceKind::Keyboard).unwrap();
+    let mut gatt_kb = receiver_kb.clone();
+    gatt_kb.identity.push(ble.clone());
+    let mut m = IdentityMemory::default();
+    m.learn(&[gatt_kb]);
+    let stored = m.to_stored();
+    assert!(
+        stored
+            .iter()
+            .flatten()
+            .all(|h| h.len() == 12 && h.chars().all(|c| c.is_ascii_hexdigit())),
+        "only hashes are stored"
+    );
+
+    let mut bas = receiver_kb.clone();
+    bas.provider = "bt-system".into();
+    bas.source_key = "ble:p1".into();
+    bas.identity = vec![ble];
+    bas.reading = Reading::ok(100, Precision::Exact);
+    let mut reports = vec![receiver_kb, bas];
+    IdentityMemory::from_stored(&stored).augment(&mut reports);
+    assert_eq!(merge(reports, &MergeConfig::default()).len(), 1);
+}

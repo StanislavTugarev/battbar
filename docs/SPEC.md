@@ -283,7 +283,22 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - macOS notification on low battery (default 15 %, once per discharge cycle).
 - Missing Bluetooth permission: clear screen with a button opening the right System
   Settings pane (Input Monitoring is not needed, see "Privacy and security").
-- Settings live in a "Settings" submenu of every device menu (no separate window).
+- Menus: every device menu has the device's details and only actions on that device
+  (Hide from Menu Bar / Merge With / Split / Unlink), plus the common entries
+  Refresh, **Settings** (one global section: launch at login, update interval,
+  low-battery threshold, spare-battery notification, headsetcontrol, Bluetooth devices
+  without battery, permission panes), **Other Devices** and Quit.
+- The app never has zero status items: with no visible device it shows one neutral
+  app icon whose menu has Settings, Other Devices and Quit.
+- Disconnected Bluetooth devices are hidden by default until they have reported a
+  battery at least once (`ever_reported` in the settings); hidden devices are listed
+  under Other Devices with "Show in Menu Bar".
+- A new device gets its icon only after a complete poll (every provider answered) at
+  least a few seconds after it first appeared, or after a timeout — so a transient
+  half-merged state (BLE Battery Service before the GATT HID++ link) never shows.
+- Identity memory (which identity keys belong to one device, e.g. CoreBluetooth
+  peripheral ↔ HID++ unit ID) is stored in the settings as hashes only. Device IDs in
+  the settings are hashes as well.
 
 ### Stage 3 — Open-source readiness
 
@@ -335,6 +350,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - Commit at the end of every stage and before large refactorings.
 
 ## Revision history
+
+- **2026-11-19** — Stage 2 review: never-reported disconnected Bluetooth devices hidden
+  by default (Other Devices menu); global Settings separate from per-device actions;
+  neutral icon when nothing is visible; persistent hashed identity memory; new-device
+  gate; Stage 3 signing with a separate long-lived "battbar Release" certificate.
 
 - **2026-11-19** — Stage 2: menu bar app; Input Monitoring verified as not needed;
   session identity memory (BLE peripheral ↔ HID++ unit ID) against transient splits;

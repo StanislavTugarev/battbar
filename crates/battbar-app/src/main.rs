@@ -35,7 +35,8 @@ enum Action {
     ToggleSpareNotify,
     ToggleShowUnreported,
     ToggleHeadsetcontrol,
-    ToggleHidden(String),
+    Hide(String),
+    Show(String),
     Split(String),
     MergeWith(String, String),
     Unlink(String),
@@ -61,6 +62,9 @@ struct App {
     tx: Sender<WorkerCmd>,
     alerts: AlertTracker,
     identities: IdentityMemory,
+    gate: NewDeviceGate,
+    /// Device IDs the new-device gate has admitted.
+    admitted: Vec<String>,
     last_update: Option<String>,
     timed_out: Vec<&'static str>,
     bt_authorization: isize,
@@ -272,12 +276,16 @@ impl App {
 
     fn on_update(&mut self, u: PollUpdate) -> Option<Post> {
         let mut reports = u.reports;
-        self.identities.learn(&reports);
+        let mut changed = false;
+        if self.identities.learn(&reports) {
+            self.settings.identity_memory = self.identities.to_stored();
+            changed = true;
+        }
         self.identities.augment(&mut reports);
         self.reports = reports;
+        let complete = u.timed_out.is_empty();
         self.timed_out = u.timed_out;
         self.polled_once = true;
-        let mut changed = false;
         for l in u.learned {
             if !self.settings.learned_links.iter().any(|x| x.bluetooth == l.bluetooth) && !self.settings.merge.splits.contains(&l.bluetooth)
             {
@@ -285,10 +293,20 @@ impl App {
                 changed = true;
             }
         }
+        self.recompute();
+        for d in &self.devices {
+            if d.reading.percent.is_some() && !self.settings.ever_reported.contains(&d.id) {
+                self.settings.ever_reported.push(d.id.clone());
+                changed = true;
+            }
+        }
         if changed {
             self.save();
         }
-        self.recompute();
+        self.admitted = self.gate.admit(std::time::Instant::now(), &self.devices, complete);
+        if self.gate.pending() {
+            let _ = self.tx.send(WorkerCmd::RefreshIn(self.gate.settle + Duration::from_millis(500)));
+        }
         self.check_alerts();
         self.last_update = Some(local_time());
         if std::env::var_os("BATTBAR_LOG").is_some() {
@@ -361,11 +379,18 @@ impl App {
                 self.settings.headsetcontrol_fallback = !self.settings.headsetcontrol_fallback;
                 reconfigure = true;
             }
-            Action::ToggleHidden(id) => {
-                if let Some(p) = self.settings.hidden.iter().position(|x| *x == id) {
-                    self.settings.hidden.remove(p);
-                } else {
+            Action::Hide(id) => {
+                self.settings.shown.retain(|x| *x != id);
+                if !self.settings.hidden.contains(&id) {
                     self.settings.hidden.push(id);
+                }
+            }
+            Action::Show(id) => {
+                self.settings.hidden.retain(|x| *x != id);
+                if let Some(d) = self.devices.iter().find(|d| d.id == id) {
+                    if ui::hidden_by_default(d, &self.settings) {
+                        self.settings.shown.push(id);
+                    }
                 }
             }
             Action::Split(id) => {
@@ -474,56 +499,56 @@ impl App {
         );
         self.separator(menu);
 
-        let devs = self.submenu(menu, "Devices");
-        let devices = self.devices.clone();
-        if devices.is_empty() {
-            self.add(&devs, "No devices", None, false, "");
+        self.add(menu, "Bluetooth Privacy Settings…", Some(Action::OpenBluetoothSettings), false, "");
+        self.add(menu, "Notification Settings…", Some(Action::OpenNotificationSettings), false, "");
+    }
+
+    /// Actions on one device: Hide, Merge With, Split, Unlink.
+    fn device_actions(&mut self, menu: &NSMenu, d: &Device, visible: bool) {
+        if visible {
+            self.add(menu, "Hide from Menu Bar", Some(Action::Hide(d.id.clone())), false, "");
+        } else {
+            self.add(menu, "Show in Menu Bar", Some(Action::Show(d.id.clone())), false, "");
         }
-        for d in &devices {
-            let sub = self.submenu(&devs, &d.name);
-            self.add(
-                &sub,
-                "Show in Menu Bar",
-                Some(Action::ToggleHidden(d.id.clone())),
-                !s.hidden.contains(&d.id),
-                "",
-            );
-            let others: Vec<&Device> = devices.iter().filter(|o| o.id != d.id).collect();
-            if !others.is_empty() {
-                let m = self.submenu(&sub, "Merge With");
-                for o in others {
-                    self.add(
-                        &m,
-                        &format!(
-                            "{} ({})",
-                            o.name,
-                            o.sources.iter().map(|s| s.transport.to_string()).collect::<Vec<_>>().join(", ")
-                        ),
-                        Some(Action::MergeWith(d.id.clone(), o.id.clone())),
-                        false,
-                        "",
-                    );
-                }
-            }
-            if d.sources.len() > 1 {
-                self.add(&sub, "Split Into Separate Devices", Some(Action::Split(d.id.clone())), false, "");
-            }
-            for l in s
-                .learned_links
-                .iter()
-                .filter(|l| d.sources.iter().any(|x| x.full_key() == l.bluetooth))
-            {
+        let devices = self.devices.clone();
+        let others: Vec<&Device> = devices.iter().filter(|o| o.id != d.id).collect();
+        if !others.is_empty() {
+            let m = self.submenu(menu, "Merge With");
+            for o in others {
+                let via = o.sources.iter().map(|s| s.transport.to_string()).collect::<Vec<_>>().join(", ");
                 self.add(
-                    &sub,
-                    "Unlink Bluetooth Connection",
-                    Some(Action::Unlink(l.bluetooth.clone())),
+                    &m,
+                    &format!("{} ({via})", o.name),
+                    Some(Action::MergeWith(d.id.clone(), o.id.clone())),
                     false,
                     "",
                 );
             }
         }
-        self.separator(menu);
-        self.add(menu, "Bluetooth Privacy Settings…", Some(Action::OpenBluetoothSettings), false, "");
+        if d.sources.len() > 1 {
+            self.add(menu, "Split Into Separate Devices", Some(Action::Split(d.id.clone())), false, "");
+        }
+        let links: Vec<String> = self
+            .settings
+            .learned_links
+            .iter()
+            .filter(|l| d.sources.iter().any(|x| x.full_key() == l.bluetooth))
+            .map(|l| l.bluetooth.clone())
+            .collect();
+        for bt in links {
+            self.add(menu, "Unlink Bluetooth Connection", Some(Action::Unlink(bt)), false, "");
+        }
+    }
+
+    fn other_devices_menu(&mut self, menu: &NSMenu) {
+        let others: Vec<Device> = ui::others(&self.devices, &self.settings).into_iter().cloned().collect();
+        if others.is_empty() {
+            self.add(menu, "None", None, false, "");
+        }
+        for d in &others {
+            let sub = self.submenu(menu, &format!("{} — {}", d.name, ui::status_text(&d.reading)));
+            self.device_actions(&sub, d, false);
+        }
     }
 
     fn device_menu(&mut self, d: Option<&Device>) -> Retained<NSMenu> {
@@ -540,6 +565,8 @@ impl App {
                 for l in ui::source_lines(d) {
                     self.add(&src, &l, None, false, "");
                 }
+                self.separator(&menu);
+                self.device_actions(&menu, d, true);
             }
             None => {
                 let text = if self.polled_once {
@@ -573,6 +600,8 @@ impl App {
         self.add(&menu, "Refresh", Some(Action::Refresh), false, "r");
         let s = self.submenu(&menu, "Settings");
         self.settings_menu(&s);
+        let o = self.submenu(&menu, "Other Devices");
+        self.other_devices_menu(&o);
         self.separator(&menu);
         self.add(&menu, "Quit battbar", Some(Action::Quit), false, "q");
         menu
@@ -592,7 +621,12 @@ impl App {
     fn render(&mut self) {
         self.dirty = false;
         self.actions.clear();
-        let visible: Vec<Device> = ui::visible(&self.devices, &self.settings).into_iter().cloned().collect();
+        // The app always keeps at least one status item (the neutral icon below).
+        let visible: Vec<Device> = ui::visible(&self.devices, &self.settings)
+            .into_iter()
+            .filter(|d| self.admitted.contains(&d.id))
+            .cloned()
+            .collect();
         let keys: Vec<String> = if visible.is_empty() {
             vec!["__battbar".into()]
         } else {
@@ -668,6 +702,7 @@ fn main() {
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
     let settings = Settings::load();
+    let settings_identity = settings.identity_memory.clone();
     let tx = worker::spawn(&settings, |u| {
         dispatch2::DispatchQueue::main().exec_async(move || deliver(u, 5));
     });
@@ -681,7 +716,9 @@ fn main() {
         actions: vec![],
         tx,
         alerts: AlertTracker::default(),
-        identities: IdentityMemory::default(),
+        identities: IdentityMemory::from_stored(&settings_identity),
+        gate: NewDeviceGate::default(),
+        admitted: vec![],
         last_update: None,
         timed_out: vec![],
         bt_authorization: battbar_macos::ble::authorization(),

@@ -10,7 +10,12 @@ use std::time::{Duration, Instant};
 
 pub enum WorkerCmd {
     Refresh,
-    Reconfigure { headsetcontrol: bool, interval: Duration },
+    /// Poll again after the given delay (e.g. while a new device settles).
+    RefreshIn(Duration),
+    Reconfigure {
+        headsetcontrol: bool,
+        interval: Duration,
+    },
 }
 
 pub struct PollUpdate {
@@ -66,6 +71,10 @@ pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'stati
                 }
                 match rx.recv_timeout(wake.saturating_duration_since(now)) {
                     Ok(WorkerCmd::Refresh) => next_poll = Instant::now(),
+                    Ok(WorkerCmd::RefreshIn(d)) => {
+                        let t = Instant::now() + d;
+                        followup = Some(followup.map_or(t, |f| f.min(t)));
+                    }
                     Ok(WorkerCmd::Reconfigure {
                         headsetcontrol: h,
                         interval: i,

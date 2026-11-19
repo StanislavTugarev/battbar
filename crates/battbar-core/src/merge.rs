@@ -167,7 +167,8 @@ fn device_id(sources: &[DeviceReport]) -> String {
     let mut ids: Vec<&IdentityKey> = sources.iter().flat_map(|s| s.identity.iter()).collect();
     ids.sort();
     match ids.first() {
-        Some(IdentityKey::HidppUnit { unit_id }) => format!("hidpp:{unit_id}"),
+        // Hashed so settings (hidden devices etc.) never hold raw unit IDs.
+        Some(IdentityKey::HidppUnit { unit_id }) => format!("hidpp:{}", short_hash(&format!("battbar-unit:{unit_id}"))),
         Some(IdentityKey::Stable { namespace, value }) => format!("{namespace}:{value}"),
         None => sources.iter().map(|s| s.full_key()).min().unwrap_or_default(),
     }
@@ -267,16 +268,41 @@ fn build_device(mut sources: Vec<DeviceReport>) -> Device {
 /// Remembers which identity keys belong together (e.g. a BLE peripheral and a HID++
 /// unit ID seen in the same report), so a later report that carries only one of them
 /// (the GATT link is not open yet, the device is away) still merges into the same device.
-#[derive(Debug, Default, Clone)]
+///
+/// Only hashes of the keys are kept, so the memory can be stored in the settings without
+/// unit IDs or peripheral identifiers in clear text.
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct IdentityMemory {
-    classes: Vec<std::collections::BTreeSet<IdentityKey>>,
+    classes: Vec<std::collections::BTreeSet<String>>,
+}
+
+fn key_hash(k: &IdentityKey) -> String {
+    let raw = match k {
+        IdentityKey::HidppUnit { unit_id } => format!("hidpp:{unit_id}"),
+        IdentityKey::Stable { namespace, value } => format!("{namespace}:{value}"),
+    };
+    short_hash(&format!("battbar-identity:{raw}"))
 }
 
 impl IdentityMemory {
-    pub fn learn(&mut self, reports: &[DeviceReport]) {
+    pub fn from_stored(classes: &[Vec<String>]) -> Self {
+        IdentityMemory {
+            classes: classes.iter().map(|c| c.iter().cloned().collect()).collect(),
+        }
+    }
+
+    pub fn to_stored(&self) -> Vec<Vec<String>> {
+        let mut v: Vec<Vec<String>> = self.classes.iter().map(|c| c.iter().cloned().collect()).collect();
+        v.sort();
+        v
+    }
+
+    /// Record keys that appear together in one report. Returns true if anything new
+    /// was learned.
+    pub fn learn(&mut self, reports: &[DeviceReport]) -> bool {
+        let before = self.to_stored();
         for r in reports.iter().filter(|r| r.identity.len() > 1) {
-            let mut set: std::collections::BTreeSet<IdentityKey> = r.identity.iter().cloned().collect();
-            // Merge every existing class that overlaps.
+            let mut set: std::collections::BTreeSet<String> = r.identity.iter().map(key_hash).collect();
             let mut i = 0;
             while i < self.classes.len() {
                 if !self.classes[i].is_disjoint(&set) {
@@ -287,20 +313,85 @@ impl IdentityMemory {
             }
             self.classes.push(set);
         }
+        self.to_stored() != before
     }
 
+    /// Give reports whose keys are known to belong together each other's keys, so
+    /// `merge` puts them into one device.
     pub fn augment(&self, reports: &mut [DeviceReport]) {
-        for r in reports.iter_mut() {
-            let extra: Vec<IdentityKey> = self
-                .classes
-                .iter()
-                .filter(|c| r.identity.iter().any(|k| c.contains(k)))
-                .flat_map(|c| c.iter().cloned())
-                .filter(|k| !r.identity.contains(k))
-                .collect();
-            r.identity.extend(extra);
-            r.identity.dedup();
+        let class_of = |r: &DeviceReport| -> Option<usize> {
+            let hs: Vec<String> = r.identity.iter().map(key_hash).collect();
+            self.classes.iter().position(|c| hs.iter().any(|h| c.contains(h)))
+        };
+        let classes: Vec<Option<usize>> = reports.iter().map(class_of).collect();
+        let mut extra: Vec<Vec<IdentityKey>> = vec![vec![]; reports.len()];
+        for (i, ci) in classes.iter().enumerate() {
+            let Some(ci) = ci else { continue };
+            for (j, cj) in classes.iter().enumerate() {
+                if i != j && cj == &Some(*ci) {
+                    extra[i].extend(reports[j].identity.iter().cloned());
+                }
+            }
         }
+        for (r, e) in reports.iter_mut().zip(extra) {
+            for k in e {
+                if !r.identity.contains(&k) {
+                    r.identity.push(k);
+                }
+            }
+        }
+    }
+}
+
+/// Delays the first appearance of a device until its picture is complete: a new device
+/// is shown once it has been seen in a complete poll (every provider answered) at least
+/// `settle` after it first appeared, or after `max_wait` in any case. This hides
+/// transient splits such as a BLE Battery Service report arriving before the GATT
+/// HID++ link that would merge it with a known device.
+#[derive(Debug)]
+pub struct NewDeviceGate {
+    first_seen: std::collections::HashMap<String, std::time::Instant>,
+    confirmed: std::collections::HashSet<String>,
+    pub settle: std::time::Duration,
+    pub max_wait: std::time::Duration,
+}
+
+impl Default for NewDeviceGate {
+    fn default() -> Self {
+        NewDeviceGate {
+            first_seen: Default::default(),
+            confirmed: Default::default(),
+            settle: std::time::Duration::from_secs(3),
+            max_wait: std::time::Duration::from_secs(10),
+        }
+    }
+}
+
+impl NewDeviceGate {
+    /// IDs of `devices` that may be shown now.
+    pub fn admit(&mut self, now: std::time::Instant, devices: &[Device], poll_complete: bool) -> Vec<String> {
+        let present: std::collections::HashSet<&String> = devices.iter().map(|d| &d.id).collect();
+        self.first_seen.retain(|id, _| present.contains(id));
+        let mut out = vec![];
+        for d in devices {
+            if self.confirmed.contains(&d.id) {
+                out.push(d.id.clone());
+                continue;
+            }
+            let t0 = *self.first_seen.entry(d.id.clone()).or_insert(now);
+            let waited = now.saturating_duration_since(t0);
+            if (poll_complete && waited >= self.settle) || waited >= self.max_wait {
+                self.confirmed.insert(d.id.clone());
+                self.first_seen.remove(&d.id);
+                out.push(d.id.clone());
+            }
+        }
+        out
+    }
+
+    /// Whether some device is waiting (the caller schedules a follow-up poll).
+    pub fn pending(&self) -> bool {
+        !self.first_seen.is_empty()
     }
 }
 
@@ -354,7 +445,7 @@ mod tests {
         assert_eq!(devs[0].reading.percent, Some(98));
         assert_eq!(devs[0].reading.status, Status::Ok);
         assert_eq!(devs[0].live_transports(), vec![Transport::BluetoothLe]);
-        assert_eq!(devs[0].id, "hidpp:u1");
+        assert!(devs[0].id.starts_with("hidpp:") && !devs[0].id.contains("u1"));
     }
 
     #[test]

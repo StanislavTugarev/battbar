@@ -12,7 +12,7 @@ pub mod transport;
 
 pub use devicedb::DeviceDb;
 pub use learner::LinkLearner;
-pub use merge::{merge, Device, IdentityMemory, MergeConfig};
+pub use merge::{merge, Device, IdentityMemory, MergeConfig, NewDeviceGate};
 pub use model::*;
 pub use provider::{BatteryProvider, Engine, EventSink, PollResult};
 pub use settings::{LearnedLink, Settings};
