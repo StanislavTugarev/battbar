@@ -46,7 +46,7 @@ pub fn status_text(r: &Reading) -> String {
         Status::NotReported => match r.note {
             Some(ReadingNote::NonRechargeableBattery) => "Non-rechargeable battery — not supported yet".into(),
             Some(ReadingNote::Hidpp10Device) => "Battery not reported (older protocol, not supported yet)".into(),
-            None => "Battery not reported".into(),
+            Some(ReadingNote::CalibratedVoltage) | None => "Battery not reported".into(),
         },
         Status::Asleep => "Asleep".into(),
         Status::Disconnected => "Disconnected".into(),
@@ -95,6 +95,9 @@ pub fn detail_lines(d: &Device) -> Vec<String> {
             .map(|m| format!(", {:.2} V", m as f32 / 1000.0))
             .unwrap_or_default();
         v.push(format!("Batteries: {chem}{cells}{mv} (estimate, experimental)"));
+    }
+    if d.reading.note == Some(ReadingNote::CalibratedVoltage) {
+        v.push("From voltage, calibrated against this device's Bluetooth readings".into());
     }
     match d.estimate {
         Some(Estimate::Charging) => v.push("Estimated while charging".into()),
@@ -205,6 +208,16 @@ mod tests {
             assert!(v.dimmed);
             assert_eq!(v.title, "");
         }
+    }
+
+    #[test]
+    fn calibrated_voltage_is_explained_in_the_details() {
+        let mut r = Reading::ok(97, Precision::Approximate);
+        r.voltage_mv = Some(4080);
+        r.note = Some(ReadingNote::CalibratedVoltage);
+        let d = dev(DeviceKind::Keyboard, r);
+        assert_eq!(item_view(&d).title, "~97%");
+        assert!(detail_lines(&d).iter().any(|l| l.contains("calibrated")));
     }
 
     #[test]

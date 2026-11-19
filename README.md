@@ -90,6 +90,11 @@ The command line tool `battbar` is installed with the cask (it lives inside the 
   switch always shows what macOS has registered — if you turn battbar off under
   System Settings → General → Login Items, it stays off. If macOS needs your approval,
   battbar says so and opens that pane.
+- **Voltage calibration.** Some devices (e.g. G915) report only a voltage on the
+  receiver but their own percentage on Bluetooth. While a device is on Bluetooth,
+  battbar learns how its firmware maps voltage to percentage and uses that when the
+  device is on the receiver, so the value stays consistent. The device menu shows
+  **Voltage Calibration** with a Reset item.
 - **AA/AAA batteries (experimental).** Devices whose firmware reports a percentage show
   it as is. Devices that report only a voltage get an estimate from an alkaline or NiMH
   discharge curve (choose under the device's **Batteries** menu; default alkaline — the

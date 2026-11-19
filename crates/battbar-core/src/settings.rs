@@ -79,6 +79,9 @@ pub struct Settings {
     pub warned_translocation: bool,
     /// Alkaline / NiMH per device (voltage-only AA/AAA devices; default alkaline).
     pub chemistry: Vec<ChemistryChoice>,
+    /// Per-device voltage → firmware percentage samples (HID++ 0x1001 devices that also
+    /// report a percentage on Bluetooth). See `calibration`.
+    pub voltage_calibration: Vec<crate::calibration::VoltageCalibration>,
 }
 
 impl Default for Settings {
@@ -99,6 +102,7 @@ impl Default for Settings {
             asked_launch_at_login: false,
             warned_translocation: false,
             chemistry: vec![],
+            voltage_calibration: vec![],
         }
     }
 }
@@ -140,6 +144,8 @@ impl Settings {
             s.ever_reported.clear();
             s.learned_links.clear();
             s.identity_memory.clear();
+            s.chemistry.clear();
+            s.voltage_calibration.clear();
             s.merge = MergeConfig::default();
             crate::ids::set_install_salt(&s.salt);
             if let Err(e) = s.save() {

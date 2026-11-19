@@ -248,6 +248,32 @@ relaxes for several minutes after unplugging.
 - Voltage-curve calibration (0x1001) uses only measurements on battery outside the
   settling period; readings while charging or settling are excluded.
 
+### Per-unit voltage calibration (HID++ 0x1001)
+
+A voltage-only device (e.g. G915) can show two different numbers: on Bluetooth LE its
+firmware reports a percentage (BLE Battery Service, `exact`), on the receiver battbar
+converts the voltage with the generic Li-ion table (`approximate`). Observed on the
+reference keyboard: 100 % on Bluetooth, 91 % on the receiver (4080 mV), 95 % in G HUB.
+
+- While a device reports both at the same time (HID++ 0x1001 voltage and an `exact`
+  percentage from another live source), battbar records (firmware %, mV) pairs, at most
+  9 recent voltages per percentage (samples within 10 mV of the previous one at the
+  same percentage are repeats). Not while charging, on external power or settling.
+- A percentage is used once it has 3 samples; its voltage is the median. Points that
+  would make the curve non-monotonic are skipped. Because older samples drop out, a
+  plateau level (firmware 100 % for a long time) drifts towards the voltage where the
+  firmware leaves it, and levels follow battery ageing.
+- On a transport with voltage only, the percentage comes from linear interpolation
+  between the unit's points; outside them the generic curve is scaled to join the
+  nearest point (towards 100 % above, towards 0 % below). The value stays
+  `approximate`; the menu says it is calibrated against the device's Bluetooth readings.
+- When the exact source is live, it still wins (precision rule); calibration never
+  changes a value that did not come from the voltage.
+- Stored in the settings by device ID (keyed hash), never in `dump` or traces. The
+  device menu shows the learned state and offers Reset. The CLI applies, never learns.
+- Limitation: the receiver link may draw more current than Bluetooth, so the voltage
+  under load can be slightly lower there; no correction is applied.
+
 ### General
 
 - Per-request timeouts (1–2 s); one hung device never blocks the others.
@@ -395,15 +421,14 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   7. HID++ 1.0: estimate the scope of battery support (receiver/device battery
      registers) separately and present it before implementing.
 
-- Per-device voltage curves: while a device reports both HID++ 0x1001 voltage and a
-  BLE Battery Service percentage, collect (mV, %) pairs and build a curve for that unit,
-  to use on transports where only voltage is available.
-
 ## Process
 
 - Commit at the end of every stage and before large refactorings.
 
 ## Revision history
+
+- **2026-11-19** — Unreleased: per-unit voltage calibration for 0x1001 devices from
+  simultaneous Bluetooth firmware percentages (moved from the backlog).
 
 - **2026-11-19** — 0.2.0: Launch at Login (asked once, status from SMAppService, never
   re-enabled automatically, postponed under App Translocation, approval/not-found help,

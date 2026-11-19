@@ -46,6 +46,7 @@ enum Action {
     /// Running translocated: reveal the real location so the user can move the app.
     MoveToApplications,
     SetChemistry(String, Chemistry),
+    ForgetCalibration(String),
 }
 
 /// Work that must run after the app state borrow is released (modal UI, terminate).
@@ -386,6 +387,7 @@ impl App {
         self.devices = merge(self.reports.clone(), &self.settings.merge_config());
         let settings = &self.settings;
         battbar_core::cells::apply_chemistry(&mut self.devices, &self.db, |id| settings.chemistry_for(id));
+        battbar_core::calibration::apply(&settings.voltage_calibration, &mut self.devices, &self.db);
         self.settling.apply(std::time::Instant::now(), &mut self.devices);
     }
 
@@ -433,6 +435,7 @@ impl App {
                 changed = true;
             }
         }
+        changed |= battbar_core::calibration::observe(&mut self.settings.voltage_calibration, &self.devices);
         if changed {
             self.save();
         }
@@ -526,6 +529,9 @@ impl App {
                 return None;
             }
             Action::SetChemistry(id, chem) => self.settings.set_chemistry(&id, chem),
+            Action::ForgetCalibration(id) => {
+                battbar_core::calibration::forget(&mut self.settings.voltage_calibration, &id);
+            }
             Action::SetThreshold(t) => self.settings.low_battery_threshold = t,
             Action::SetInterval(s) => {
                 self.settings.poll_interval_secs = s;
@@ -706,6 +712,17 @@ impl App {
                 current == Some(Chemistry::Nimh),
                 "",
             );
+        }
+        if let Some(cal) = self.settings.voltage_calibration.iter().find(|c| c.device == d.id) {
+            let levels = cal.usable_levels();
+            let sub = self.submenu(menu, "Voltage Calibration");
+            let state = if levels == 0 {
+                "Learning on Bluetooth…".to_string()
+            } else {
+                format!("Learned from Bluetooth ({levels} level{})", if levels == 1 { "" } else { "s" })
+            };
+            self.add(&sub, &state, None, false, "");
+            self.add(&sub, "Reset", Some(Action::ForgetCalibration(d.id.clone())), false, "");
         }
         if visible {
             self.add(menu, "Hide from Menu Bar", Some(Action::Hide(d.id.clone())), false, "");

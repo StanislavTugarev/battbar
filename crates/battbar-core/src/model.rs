@@ -121,7 +121,7 @@ pub struct BatteryInfo {
     pub rechargeable: Option<bool>,
 }
 
-/// Why a connected device has no battery value.
+/// Why a connected device has no battery value, or how its value was obtained.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadingNote {
@@ -130,6 +130,9 @@ pub enum ReadingNote {
     NonRechargeableBattery,
     /// HID++ 1.0 device: battery registers not supported yet.
     Hidpp10Device,
+    /// Percentage from the voltage through this unit's own curve, learned while it also
+    /// reported its firmware percentage on Bluetooth (`calibration::apply`).
+    CalibratedVoltage,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

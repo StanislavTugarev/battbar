@@ -173,7 +173,7 @@ fn fmt_percent(r: &Reading) -> String {
         (Status::NotReported, _) => match r.note {
             Some(ReadingNote::NonRechargeableBattery) => "non-rechargeable battery (not supported yet)".into(),
             Some(ReadingNote::Hidpp10Device) => "n/r (HID++ 1.0)".into(),
-            None => "n/r".into(),
+            Some(ReadingNote::CalibratedVoltage) | None => "n/r".into(),
         },
         (s, _) => format!("{s:?}").to_lowercase(),
     }
@@ -191,6 +191,9 @@ fn fmt_reading(r: &Reading) -> String {
     }
     if r.status == Status::Ok && r.percent.is_some() {
         parts.push(format!("{:?}", r.precision).to_lowercase());
+    }
+    if r.note == Some(ReadingNote::CalibratedVoltage) {
+        parts.push("calibrated".into());
     }
     parts.join(", ")
 }
@@ -294,10 +297,12 @@ fn pseudonymize(path: &PathBuf, unit_ids: &[String]) -> std::io::Result<()> {
     std::fs::write(path, text)
 }
 
-/// Merge reports and estimate replaceable-cell levels (same steps as the app).
+/// Merge reports, estimate replaceable-cell levels and apply learned voltage
+/// calibration (same steps as the app; the CLI never learns or stores anything).
 fn merged(reports: Vec<DeviceReport>, settings: &Settings, db: &DeviceDb) -> Vec<Device> {
     let mut d = merge(reports, &settings.merge_config());
     battbar_core::cells::apply_chemistry(&mut d, db, |id| settings.chemistry_for(id));
+    battbar_core::calibration::apply(&settings.voltage_calibration, &mut d, db);
     d
 }
 
@@ -553,6 +558,13 @@ mod tests {
             bluetooth: format!("bt-system/classic:{bt}"),
             name: "Headset".into(),
         });
+        for id in &s.hidden {
+            let mut c = battbar_core::calibration::VoltageCalibration::new(id);
+            for mv in [4321, 4301, 4281] {
+                c.add(100, mv);
+            }
+            s.voltage_calibration.push(c);
+        }
         let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/someone".into());
         let db_sources = vec!["builtin:hidpp.toml".to_string(), format!("{home}/.config/battbar/devices/my.toml")];
         let text = serde_json::to_string(&dump_report(true, &db_sources, vec![], &devices)).unwrap();
@@ -567,6 +579,8 @@ mod tests {
             "learned_links",
             "identity_memory",
             "ever_reported",
+            "voltage_calibration",
+            "4321",
             "config.toml",
             home.as_str(),
         ] {

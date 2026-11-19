@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Voltage calibration per device: a keyboard or mouse that reports only its voltage
+  on the receiver (e.g. G915) but its own percentage on Bluetooth no longer jumps
+  between the two (100 % on Bluetooth, 91 % on the receiver). While both are
+  available, battbar learns which voltage the device firmware calls which percentage
+  and uses that on the receiver. Shown under the device's **Voltage Calibration** menu,
+  with Reset.
+
 ## [0.2.0] - 2026-11-19
 
 ### Added
