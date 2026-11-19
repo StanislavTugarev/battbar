@@ -16,7 +16,7 @@ jobs:
     name: fmt, clippy, tests (macOS)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # the privacy check below scans every commit
       - uses: dtolnay/rust-toolchain@stable
@@ -40,7 +40,7 @@ jobs:
     name: dependency licenses (cargo deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check licenses bans sources advisories

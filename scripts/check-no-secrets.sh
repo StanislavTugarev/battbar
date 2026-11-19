@@ -9,9 +9,9 @@ if [ -n "$bad" ]; then
   echo "$bad" >&2
   exit 1
 fi
-if git grep -nI -E -e '-----BEGIN ([A-Z]+ )?PRIVATE KEY-----' -e '-----BEGIN CERTIFICATE-----' -- . ':!scripts/check-no-secrets.sh' >/dev/null; then
+if git grep -nI -E -e '-----BEGIN ([A-Z]+ )?PRIVATE KEY-----' -e '-----BEGIN CERTIFICATE-----' -- . ':!scripts/check-no-secrets.sh' ':!scripts/check-history.py' >/dev/null; then
   echo "PEM private key or certificate found in tracked files:" >&2
-  git grep -nI -l -E -e '-----BEGIN ([A-Z]+ )?PRIVATE KEY-----' -e '-----BEGIN CERTIFICATE-----' -- . ':!scripts/check-no-secrets.sh' >&2
+  git grep -nI -l -E -e '-----BEGIN ([A-Z]+ )?PRIVATE KEY-----' -e '-----BEGIN CERTIFICATE-----' -- . ':!scripts/check-no-secrets.sh' ':!scripts/check-history.py' >&2
   exit 1
 fi
 echo "No signing material tracked."
