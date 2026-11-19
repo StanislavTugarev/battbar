@@ -113,6 +113,12 @@ the universal binary (aarch64 is cross-compiled, `lipo` joins them), and the tes
 depend on the architecture. Move back to an arm64 label when its capacity is reliable;
 GitHub plans to retire the Intel image in 2027.
 
+**Known gap:** on the Intel runner the arm64 slice of the universal binary is compiled
+and linked, but **never executed in CI** — tests run the x86_64 build only. This is
+accepted until CI returns to an arm64 runner or runs a matrix (arm64 + Intel). Until
+then, arm64 is exercised only on the maintainer's Apple Silicon Mac (development build,
+and the first-launch check of every release).
+
 ## Making a release
 
 Tags: `vX.Y.Z` for releases, `vX.Y.Z-rc.N` for pre-releases. `X.Y.Z` must equal

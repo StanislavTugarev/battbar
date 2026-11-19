@@ -378,7 +378,29 @@ Logitech Pebble Keys 2 K380s (2× AAA), over Bluetooth LE (GATT HID++):
 | battbar 0.1.0 | 100 %, exact (no false 0 %) |
 | Features | 0000 0001 0003 0005 1D4B 0020 0007 0011 1004 1B04 1814 1815 40A3 4220 4521 4531 4540 00C3 1802 1807 1816 1805 1830 1891 18A1 1E00 1E02 1602 1EB0 1861 18B0 |
 
-Compared with the rechargeable G502 X PLUS (0x1004 v5, flags `0x0f`), bit 0 of the
-0x1004 capability flags is clear on this AAA device — a likely "rechargeable" flag for
-0.2.0. Voltage-only (0x1001) devices on AA cells are covered in 0.1.0 by a guard only
+### 0x1004 getCapabilities: which byte was read (checked against Solaar)
+
+battbar calls 0x1004 function 0 (getCapabilities) and reads the parameter bytes as
+`[byte0, byte1, …]`:
+
+| Device | byte0 | byte1 | getStatus (fn 1) |
+|---|---|---|---|
+| G502 X PLUS (rechargeable, 0x1004 v5) | `0x0f` | `0x0f` | `0b 01 00 00` (11 %, critical, discharging) |
+| Pebble Keys 2 K380s (2× AAA, 0x1004 v3) | `0x0f` | `0x02` | `64 08 00 00` (100 %, full, discharging) |
+
+- **byte0** is treated as the mask of supported levels (critical/low/good/full = bits
+  0–3): `0x0f` on both devices = all four levels.
+- **byte1** is treated as flags. battbar 0.1.0 uses only bit 1 (`0x02`, "state of
+  charge in % supported") to decide `exact` vs level-based `coarse`.
+- The idea "bit 0 of byte1 = rechargeable" comes only from these two samples (G502
+  `0x0f` has it, Pebble `0x02` does not). It is **unconfirmed**.
+- **Solaar does not call getCapabilities at all** (`lib/logitech_receiver/hidpp20.py`,
+  `get_battery_unified` / `decipher_battery_unified`): it reads only getStatus
+  `[discharge %, level, status, —]`, treats `level` as a single bit (8 full, 4 good,
+  2 low, 1 critical) and falls back to that level when the percentage is 0. So Solaar
+  neither confirms nor contradicts the byte1 bit meanings.
+- Before relying on byte1 bits (0.2.0), confirm them with the feature description or
+  more samples, in particular a rechargeable device without state-of-charge reporting
+  and another battery-powered one. The G502 having `0x0f` in byte1 too makes a single
+  "byte = level mask" misread plausible in other code, so name both bytes explicitly. Voltage-only (0x1001) devices on AA cells are covered in 0.1.0 by a guard only
 (synthetic trace `traces/synthetic-receiver-aa-battery-0x1001.jsonl`).

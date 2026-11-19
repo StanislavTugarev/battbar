@@ -367,12 +367,25 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
-- **0.2.0: non-rechargeable batteries.** 0.1.0 only guards against them (0x1001 below
-  ~3.3 V → "not reported", no alerts). Findings: the Pebble Keys 2 K380s (2× AAA, BLE)
-  reports via 0x1004 v3 with capabilities flags `0x02`, while the rechargeable G502 X
-  PLUS reports `0x0f` — bit 0 of the 0x1004 flags looks like "rechargeable" and can
-  identify the chemistry without voltage heuristics. Voltage-only devices need
-  alkaline/NiMH curves and a chemistry entry in the device database.
+- **0.2.0: battery chemistry and non-rechargeable batteries** (requirements; not
+  implemented in 0.1.0, which only guards: 0x1001 below ~3.3 V → "not reported", no
+  alerts):
+  1. 0x1004 capabilities: before treating any bit as "rechargeable", confirm the parsing
+     of getCapabilities — byte0 = supported-level mask (critical/low/good/full, 4 bits),
+     byte1 = flags (DISCOVERY "0x1004 getCapabilities"). Solaar does not read
+     capabilities, so it cannot serve as the reference.
+  2. Devices with 0x1004: the firmware accounts for the chemistry — the percentage is
+     used as reported; battbar's curves are not applied.
+  3. `devices/*.toml`: field `chemistry = "li-ion" | "alkaline" | "nimh"`; discharge
+     curves per chemistry. For unknown battery-powered models the Li-ion curve is never
+     applied.
+  4. Battery-powered 0x1001 devices: a per-device menu setting Alkaline / NiMH (default
+     alkaline) — the two cannot be told apart by voltage.
+  5. 0x1000 with discrete levels → `precision = coarse`.
+  6. Alerts for battery-powered devices say "replace batteries", not "charge"; the
+     charging/settling logic does not apply to them.
+  7. HID++ 1.0: estimate the scope of battery support (receiver/device battery
+     registers) separately and present it before implementing.
 
 - Per-device voltage curves: while a device reports both HID++ 0x1001 voltage and a
   BLE Battery Service percentage, collect (mV, %) pairs and build a curve for that unit,
