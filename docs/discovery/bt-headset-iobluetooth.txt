@@ -1,0 +1,4 @@
+Arctis Nova Pro Wireless | connected=true | class=0x240418 | batteryPercentSingle=85 | batteryPercentCombined=0 | batteryPercentLeft=0 | batteryPercentRight=0 | batteryPercentCase=0 | headsetBattery=0
+DualSense Wireless Controller | connected=false | class=0x2508 | batteryPercentSingle=0 | batteryPercentCombined=0 | batteryPercentLeft=0 | batteryPercentRight=0 | batteryPercentCase=0 | headsetBattery=0
+G915 KEYBOARD | connected=true | class=0x0 | batteryPercentSingle=0 | batteryPercentCombined=0 | batteryPercentLeft=0 | batteryPercentRight=0 | batteryPercentCase=0 | headsetBattery=0
+Pebble K380s | connected=false | class=0x0 | batteryPercentSingle=0 | batteryPercentCombined=0 | batteryPercentLeft=0 | batteryPercentRight=0 | batteryPercentCase=0 | headsetBattery=0

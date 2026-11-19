@@ -1,0 +1,5 @@
+== SteelSeries probe ==
+-- 1038:12e0 "Arctis Nova Pro Wireless" iface=4 collections=[ffc0/0001, ff00/0001]
+   2-byte write: wrote 2 bytes
+   read  64: 06 b0 00 00 04 01 08 06 08 00 02 0a 00 00 08 08 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  <- status reply: byte6(battery 0..8)=8 -> 100% byte15(status)=0x08 (online)
+

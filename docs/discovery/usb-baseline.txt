@@ -1,0 +1,194 @@
+== HID enumeration (hidapi, nothing opened) ==
+046d:c547 bus=USB iface=2 release=0x0402 product="USB Receiver" manufacturer="Logitech" path=<redacted>
+    collection usage_page=0xff00 (Vendor) usage=0x0001
+    collection usage_page=0xff00 (Vendor) usage=0x0002
+    -> vendor-only interface: may be opened
+046d:c547 bus=USB iface=0 release=0x0402 product="USB Receiver" manufacturer="Logitech" path=<redacted>
+    collection usage_page=0x0001 (Generic Desktop) usage=0x0002
+    collection usage_page=0x0001 (Generic Desktop) usage=0x0001
+    -> input/consumer interface: never opened
+1038:12e0 bus=USB iface=3 release=0x0130 product="Arctis Nova Pro Wireless" manufacturer="SteelSeries" path=<redacted>
+    collection usage_page=0x000c (Consumer) usage=0x0001
+    -> input/consumer interface: never opened
+046d:c547 bus=USB iface=1 release=0x0402 product="USB Receiver" manufacturer="Logitech" path=<redacted>
+    collection usage_page=0x0001 (Generic Desktop) usage=0x0006
+    collection usage_page=0x000c (Consumer) usage=0x0001
+    collection usage_page=0x0001 (Generic Desktop) usage=0x0080
+    -> input/consumer interface: never opened
+1038:12e0 bus=USB iface=4 release=0x0130 product="Arctis Nova Pro Wireless" manufacturer="SteelSeries" path=<redacted>
+    collection usage_page=0xffc0 (Vendor) usage=0x0001
+    collection usage_page=0xff00 (Vendor) usage=0x0001
+    -> vendor-only interface: may be opened
+046d:0afc bus=USB iface=2 release=0x0200 product="Yeti GX" manufacturer="Logitech" path=<redacted>
+    collection usage_page=0xff43 (Vendor) usage=0x0701
+    collection usage_page=0xff43 (Vendor) usage=0x0702
+    collection usage_page=0xff43 (Vendor) usage=0x0704
+    -> vendor-only interface: may be opened
+
+== HID++ probe ==
+-- 046d:c547 "USB Receiver" bus=USB collections=[ff00/0001, ff00/0002]
+   report mode: short (0x10) + long (0x11)
+   [receiver idx 0xFF]
+     ping: HID++ 1.0 receiver (err 0x01)
+     notification flags (short reg 0x00): 00 09 00
+     connection state  (short reg 0x02): 00 02 00
+     fw major/minor    (short reg 0xF1/01): 01 04 02
+     fw build          (short reg 0xF1/02): 02 00 09
+     receiver info     (long  reg 0xB5/03): 03 <serial redacted> 05 02 08 ff 02 00 00 00 00 00 00
+     slot 1 pairing (0xB5/20): 20 07 08 40 7c 11 00 01 b3 00 00 00 00 2c 00 00
+     slot 1 ext-pairing (0xB5/30): <fp:a19c52>
+     slot 1 codename (0xB5/40): 40 0d 47 39 31 35 20 4b 45 59 42 4f 41 52 44 00  "G915 KEYBOARD"
+     slot 2 pairing (0xB5/21): 21 08 08 40 99 11 00 02 b1 00 00 00 00 a4 00 00
+     slot 2 ext-pairing (0xB5/31): <fp:3f257c>
+     slot 2 codename (0xB5/41): 41 0b 47 35 30 32 20 58 20 50 4c 55 53 00 00 00  "G502 X PLUS"
+     slot 3 pairing: Hidpp10(9)
+     slot 3 ext-pairing: Hidpp10(9)
+     slot 3 codename: Hidpp10(9)
+     slot 4 pairing: Hidpp10(9)
+     slot 4 ext-pairing: Hidpp10(9)
+     slot 4 codename: Hidpp10(9)
+     slot 5 pairing: Hidpp10(9)
+     slot 5 ext-pairing: Hidpp10(9)
+     slot 5 codename: Hidpp10(9)
+     slot 6 pairing: Hidpp10(9)
+     slot 6 ext-pairing: Hidpp10(9)
+     slot 6 codename: Hidpp10(9)
+   [device idx 0x01] HID++ 4.2
+     features (37 + root):
+       0x00: 0x0000 v1 IRoot
+       0x01: 0x0001 v1 IFeatureSet
+       0x02: 0x0003 v4 DeviceInformation
+       0x03: 0x0005 v0 DeviceNameType
+       0x04: 0x1d4b v0 WirelessDeviceStatus
+       0x05: 0x0020 v0 ConfigChange
+       0x06: 0x0007 v0 DeviceFriendlyName
+       0x07: 0x1001 v3 BatteryVoltage
+       0x08: 0x1814 v1 ChangeHost
+       0x09: 0x1815 v1 HostsInfo
+       0x0a: 0x8071 v0 RGBEffects
+       0x0b: 0x8081 v2 PerKeyLightingV2
+       0x0c: 0x1b04 v4 ReprogControlsV4
+       0x0d: 0x1bc0 v1 ?
+       0x0e: 0x4100 v0 Encryption
+       0x0f: 0x4522 v0 DisableKeysByUsage
+       0x10: 0x4540 v0 ?
+       0x11: 0x8010 v0 Gkey
+       0x12: 0x8020 v0 Mkeys
+       0x13: 0x8030 v0 MR
+       0x14: 0x8040 v0 BrightnessControl
+       0x15: 0x8100 v0 OnboardProfiles
+       0x16: 0x8060 v0 ReportRate
+       0x17: 0x00c2 v0 DfuControl(signed)
+       0x18: 0x00d0 v3 Dfu
+       0x19: 0x1802 v0 DeviceReset [hidden,engineering]
+       0x1a: 0x1803 v0 GpioAccess [hidden,engineering]
+       0x1b: 0x1806 v8 ConfigDeviceProps [hidden,engineering]
+       0x1c: 0x1813 v0 ? [hidden,engineering]
+       0x1d: 0x1805 v0 OobState [hidden,engineering]
+       0x1e: 0x1830 v0 ? [hidden,engineering]
+       0x1f: 0x1890 v9 ? [hidden,engineering]
+       0x20: 0x1891 v9 ? [hidden,engineering]
+       0x21: 0x18a1 v0 ? [hidden,engineering]
+       0x22: 0x1e00 v0 EnableHiddenFeatures [hidden]
+       0x23: 0x1eb0 v0 TDETestModeInit [hidden,engineering]
+       0x24: 0x1861 v0 ? [hidden,engineering]
+       0x25: 0x18b0 v0 ? [hidden,engineering]
+     IRoot.getFeature(0x1004) -> not present
+     IRoot.getFeature(0x1001) -> index 0x07 v3
+     IRoot.getFeature(0x1000) -> not present
+     DeviceInformation v4: entities=5 unitId=<fp:feef5e> transports=0x000e [BLE|eQuad/Lightspeed|USB] modelIds=b3 54 40 7c c3 3e extModel=0x01 caps=0x00
+       fw entity 0: type=1 BOT77.03 build 0041 trPid=00 00
+       fw entity 1: type=5 ---00.00 build 00a9 trPid=00 00
+       fw entity 2: type=0 MPK09.04 build 0042 trPid=40 7c
+       fw entity 3: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 4: type=8 ---00.00 build 0000 trPid=00 00
+     DeviceName: "G915 WIRELESS RGB MECHANICAL GAMING KEYBOARD" type=0 (keyboard)
+     BatteryVoltage v3: 4200 mV flags=0x81 raw=10 68 81 00 00 00
+   [device idx 0x02] HID++ 4.2
+     features (32 + root):
+       0x00: 0x0000 v2 IRoot
+       0x01: 0x0001 v2 IFeatureSet
+       0x02: 0x0003 v4 DeviceInformation
+       0x03: 0x0005 v0 DeviceNameType
+       0x04: 0x1d4b v0 WirelessDeviceStatus
+       0x05: 0x0020 v0 ConfigChange
+       0x06: 0x1004 v5 UnifiedBattery
+       0x07: 0x2202 v0 ExtendedAdjustableDPI
+       0x08: 0x2121 v0 ?
+       0x09: 0x8071 v2 RGBEffects
+       0x0a: 0x8081 v2 PerKeyLightingV2
+       0x0b: 0x8090 v3 ModeStatus
+       0x0c: 0x8100 v0 OnboardProfiles
+       0x0d: 0x8110 v0 MouseButtonSpy
+       0x0e: 0x8061 v0 ExtendedReportRate
+       0x0f: 0x1500 v0 ?
+       0x10: 0x00d0 v3 Dfu
+       0x11: 0x1802 v0 DeviceReset [hidden,engineering]
+       0x12: 0x1803 v0 GpioAccess [hidden,engineering]
+       0x13: 0x1806 v8 ConfigDeviceProps [hidden,engineering]
+       0x14: 0x1811 v0 ? [hidden,engineering]
+       0x15: 0x1805 v0 OobState [hidden,engineering]
+       0x16: 0x1830 v0 ? [hidden,engineering]
+       0x17: 0x1875 v0 ? [hidden,engineering]
+       0x18: 0x1861 v1 ? [hidden,engineering]
+       0x19: 0x1890 v7 ? [hidden,engineering]
+       0x1a: 0x18a1 v0 ? [hidden,engineering]
+       0x1b: 0x1801 v0 ? [hidden,engineering]
+       0x1c: 0x1e00 v0 EnableHiddenFeatures [hidden]
+       0x1d: 0x1e22 v0 SPIDirectAccess [hidden,engineering]
+       0x1e: 0x1eb0 v0 TDETestModeInit [hidden,engineering]
+       0x1f: 0x18b1 v0 ? [hidden,engineering]
+       0x20: 0x18c0 v0 ? [hidden,engineering]
+     IRoot.getFeature(0x1004) -> index 0x06 v5
+     IRoot.getFeature(0x1001) -> not present
+     IRoot.getFeature(0x1000) -> not present
+     DeviceInformation v4: entities=12 unitId=<fp:bcbad8> transports=0x000c [eQuad/Lightspeed|USB] modelIds=40 99 c0 95 00 00 extModel=0x00 caps=0x01
+       fw entity 0: type=1 BL142.00 build 0016 trPid=ab 0b
+       fw entity 1: type=0 MPM27.01 build 0022 trPid=40 99
+       fw entity 2: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 3: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 4: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 5: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 6: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 7: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 8: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 9: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 10: type=8 ---00.00 build 0000 trPid=00 00
+       fw entity 11: type=8 ---00.00 build 0000 trPid=00 00
+       serial: <fp:106495>
+     DeviceName: "G502 X PLUS" type=3 (mouse)
+     UnifiedBattery v5: caps levels=0b1111 flags=0x0f (soc_supported=true) | status soc=11% level=0b0001 charging=0 ext_power=0 raw=0b 01 00 00 00 00
+   non-HID++ reports dropped unseen: 0
+-- 046d:0afc "Yeti GX" bus=USB collections=[ff43/0701, ff43/0702, ff43/0704]
+   report mode: short (0x10) + long (0x11)
+   [device idx 0xff] HID++ 4.2
+     features (13 + root):
+       0x00: 0x0000 v2 IRoot
+       0x01: 0x0001 v2 IFeatureSet
+       0x02: 0x0003 v7 DeviceInformation
+       0x03: 0x0005 v4 DeviceNameType
+       0x04: 0x0011 v0 ?
+       0x05: 0x00c2 v0 DfuControl(signed)
+       0x06: 0x1602 v0 ?
+       0x07: 0x180a v0 ? [hidden,engineering]
+       0x08: 0x1e81 v0 ? [hidden,engineering]
+       0x09: 0x4610 v1 ? [hidden,engineering]
+       0x0a: 0x8040 v1 BrightnessControl
+       0x0b: 0x8071 v4 RGBEffects
+       0x0c: 0x8081 v0 PerKeyLightingV2
+       0x0d: 0x8370 v1 ?
+     IRoot.getFeature(0x1004) -> not present
+     IRoot.getFeature(0x1001) -> not present
+     IRoot.getFeature(0x1000) -> not present
+     DeviceInformation v7: entities=2 unitId=<fp:addcbe> transports=0x0008 [USB] modelIds=0a fc 00 00 00 00 extModel=0x00 caps=0x01
+       fw entity 0: type=0 CMI03.10 build 0027 trPid=0a fc
+       fw entity 1: type=2 CMI03.05 build 0000 trPid=00 00
+       serial: <fp:cee3c2>
+     DeviceName: "Yeti GX" type=15 (microphone)
+   non-HID++ reports dropped unseen: 0
+
+== SteelSeries probe ==
+-- 1038:12e0 "Arctis Nova Pro Wireless" iface=4 collections=[ffc0/0001, ff00/0001]
+   2-byte write: wrote 2 bytes
+   read  64: 06 b0 00 00 01 00 08 04 08 00 02 0a 00 00 08 08 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  <- status reply: byte6(battery 0..8)=8 -> 100% byte15(status)=0x08 (online)
+

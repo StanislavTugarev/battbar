@@ -1,0 +1,2 @@
+   [device idx 0x01] no device (HID++1.0 err 0x08 UnknownDevice)
+   [device idx 0x02] HID++ 4.2

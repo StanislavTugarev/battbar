@@ -1,0 +1,30 @@
+battbar
+Copyright (C) 2026 battbar contributors
+
+This program is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version. See LICENSE.
+
+Third-party protocol knowledge
+------------------------------
+
+Parts of the protocol handling are derived from the following projects. Files that
+contain ported logic say so in their header.
+
+* Solaar — Linux device manager for Logitech devices
+  https://github.com/pwr-Solaar/Solaar
+  License: GPL-2.0-or-later (used here under GPL-3.0-or-later)
+  Used for: HID++ 1.0 receiver registers, HID++ 2.0 feature IDs and battery decoding.
+
+* HeadsetControl — sidetone and battery for USB headsets
+  https://github.com/Sapd/HeadsetControl
+  License: GPL-3.0
+  Used for: SteelSeries Arctis Nova Pro Wireless base station status request/response.
+
+Trademarks
+----------
+
+Logitech, Lightspeed, Unifying, Bolt, G HUB and Options+ are trademarks of Logitech.
+SteelSeries, Arctis and GG are trademarks of SteelSeries. Bluetooth is a trademark of
+Bluetooth SIG. battbar is not affiliated with or endorsed by any of them; the names are
+used only to describe compatibility.

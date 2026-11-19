@@ -1,0 +1,10 @@
+[package]
+name = "battbar-discovery"
+description = "Stage 0 read-only hardware discovery tool for battbar (not shipped)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+hidapi = "2.6"

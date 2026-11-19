@@ -1,0 +1,8 @@
+central state: 5 (5 = poweredOn), authorization: 3 (3 = allowedAlways)
+connected peripherals: 1
+[G915 KEYBOARD] connected (app-level); discovering services
+[G915 KEYBOARD] services visible to app: ["180A", "180F", "00010000-0000-1000-8000-011F2000046D"]
+  battery char 2A19 props=0x12
+  service 180A chars: ["2A29(0x2)", "2A24(0x2)", "2A25(0x2)", "2A27(0x2)", "2A26(0x2)", "2A28(0x2)", "2A50(0x2)"]
+  service 00010000-0000-1000-8000-011F2000046D chars: ["00010001-0000-1000-8000-011F2000046D(0x1e)"]
+[G915 KEYBOARD] Battery Level = 100%
