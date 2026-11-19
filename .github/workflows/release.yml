@@ -15,7 +15,7 @@ env:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-15-intel # builds both slices; arm64 runner capacity was unreliable
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
