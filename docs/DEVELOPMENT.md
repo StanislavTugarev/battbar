@@ -167,6 +167,15 @@ accepted until CI returns to an arm64 runner or runs a matrix (arm64 + Intel). U
 then, arm64 is exercised only on the maintainer's Apple Silicon Mac (development build,
 and the first-launch check of every release).
 
+## Disk image
+
+`scripts/build-dmg.sh APP OUT.dmg` builds the drag-to-Applications disk image with
+`dmgbuild` (`pip install dmgbuild==2.0.0`, MIT; it writes the Finder window layout
+directly, so it also works on headless CI runners). Window layout:
+`packaging/dmg/settings.py`; background: `design/dmg/background.svg` (rendered at @1x
+and @2x into a multi-resolution TIFF). The release workflow signs the image with the
+release certificate and lists it in `SHA256SUMS`.
+
 ## Making a release
 
 Tags: `vX.Y.Z` for releases, `vX.Y.Z-rc.N` for pre-releases. `X.Y.Z` must equal

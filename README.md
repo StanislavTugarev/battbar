@@ -47,13 +47,14 @@ trust without installing (e.g. in a script), trust just the cask:
 `brew trust --cask StanislavTugarev/battbar/battbar`. There is no need to trust the
 whole tap. Details: [Homebrew Tap Trust](https://docs.brew.sh/Tap-Trust).
 
-**Manually:** download `battbar-<version>.zip` from
-[Releases](https://github.com/StanislavTugarev/battbar/releases), check it against `SHA256SUMS`,
-unzip and **drag `battbar.app` into the Applications folder before opening it**. An app
-opened straight from Downloads runs from a temporary copy (App Translocation): battbar
-then shows *Move battbar to the Applications folder* once, keeps a *Move battbar to
-Applications…* item in its menu, and does not offer Launch at Login until it has been
-moved.
+**Manually:** download `battbar-<version>.dmg` from
+[Releases](https://github.com/StanislavTugarev/battbar/releases) (optionally check it against
+`SHA256SUMS`), open it and **drag battbar onto the Applications folder** in the window
+that appears; then open battbar from Applications and eject the disk image. (A `.zip`
+is published as well, for Homebrew.) An app opened straight from the disk image or from
+Downloads runs from a temporary copy (App Translocation): battbar then shows *Move
+battbar to the Applications folder* once, keeps a *Move battbar to Applications…* item
+in its menu, and does not offer Launch at Login until it has been moved.
 
 **First launch (Gatekeeper).** battbar is signed with its own certificate but not
 notarized by Apple, so on current macOS (15 Sequoia, 26 Tahoe) the first start is

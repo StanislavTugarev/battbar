@@ -15,6 +15,8 @@ All notable changes to this project are documented here. The format follows
   back on; approval and "not found" cases explain what to do and open System Settings →
   Login Items. The question is postponed while macOS runs the app from a translocated
   copy.
+- Disk image (`battbar-<version>.dmg`) with the usual drag-to-Applications window,
+  signed like the app; the `.zip` stays for Homebrew.
 - When opened straight from a download (App Translocation), battbar explains once how to
   move it to the Applications folder (*Show in Finder* selects the downloaded copy),
   keeps *Move battbar to Applications…* in its menu, and does not register Launch at

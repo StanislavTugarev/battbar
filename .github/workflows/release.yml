@@ -70,12 +70,17 @@ jobs:
       - name: Signed by the pinned release certificate
         run: scripts/check-release-signature.sh target/battbar.app
 
-      - name: Package
+      - name: Package (zip for Homebrew, disk image for manual installs)
         run: |
           V=${{ steps.version.outputs.RELEASE_VERSION }}
           mkdir -p dist
           ditto -c -k --keepParent target/battbar.app "dist/battbar-$V.zip"
-          (cd dist && shasum -a 256 "battbar-$V.zip" > SHA256SUMS)
+          python3 -m venv "$RUNNER_TEMP/dmgbuild"
+          "$RUNNER_TEMP/dmgbuild/bin/pip" install --quiet dmgbuild==2.0.0
+          DMGBUILD="$RUNNER_TEMP/dmgbuild/bin/dmgbuild" scripts/build-dmg.sh target/battbar.app "dist/battbar-$V.dmg"
+          codesign --force --sign "battbar Release" --identifier io.github.battbar.dmg "dist/battbar-$V.dmg"
+          codesign --verify --strict "dist/battbar-$V.dmg"
+          (cd dist && shasum -a 256 "battbar-$V.zip" "battbar-$V.dmg" > SHA256SUMS)
           cat dist/SHA256SUMS
 
       - name: Publish GitHub release
@@ -92,7 +97,7 @@ jobs:
         if: steps.version.outputs.PRERELEASE == 'false'
         env:
           HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
-        run: scripts/update-cask.sh "${{ steps.version.outputs.VERSION }}" "$(cut -d' ' -f1 dist/SHA256SUMS)"
+        run: scripts/update-cask.sh "${{ steps.version.outputs.VERSION }}" "$(grep -E ' battbar-[^ ]+\.zip$' dist/SHA256SUMS | cut -d' ' -f1)"
 
       - name: Remove signing keychain
         if: always()
