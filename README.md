@@ -29,8 +29,23 @@ already knows. **battbar is not affiliated with or endorsed by Logitech or Steel
 **Homebrew**
 
 ```
+brew tap StanislavTugarev/battbar
 brew install --cask StanislavTugarev/battbar/battbar
 ```
+
+Updates come with `brew upgrade`; uninstall with
+`brew uninstall --cask StanislavTugarev/battbar/battbar`.
+
+*Why the full name?* Since Homebrew 6, **Tap Trust** is on by default: Homebrew does not
+load formulae or casks from taps outside Homebrew's own until you trust them, because a
+cask is Ruby code that runs with your user's rights whenever Homebrew loads it.
+Installing by the fully qualified name (`StanislavTugarev/battbar/battbar`) trusts
+**only this one cask** — not the rest of the tap and nothing added to it later — and
+`brew upgrade` keeps working for it. The short form `brew install --cask battbar` works
+only after the cask is trusted, so it is not the recommended way. If you ever need the
+trust without installing (e.g. in a script), trust just the cask:
+`brew trust --cask StanislavTugarev/battbar/battbar`. There is no need to trust the
+whole tap. Details: [Homebrew Tap Trust](https://docs.brew.sh/Tap-Trust).
 
 **Manually:** download `battbar-<version>.zip` from
 [Releases](https://github.com/StanislavTugarev/battbar/releases), check it against `SHA256SUMS`,

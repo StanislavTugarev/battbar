@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Installation docs and cask caveats explain Homebrew Tap Trust: install by the fully
+  qualified name, which trusts only the battbar cask.
+- Cask uses `depends_on macos: :ventura` (the string comparison form is deprecated).
+
 ## [0.1.0] - 2026-11-19
 
 ### Added
