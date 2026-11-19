@@ -786,7 +786,10 @@ impl App {
         if visible.is_empty() {
             let it = self.status_item("__battbar");
             if let Some(b) = it.button(self.mtm) {
-                let img = NSImage::imageWithSystemSymbolName_accessibilityDescription(&ns("battery.100percent"), Some(&ns("battbar")));
+                // The app's own glyph (template image from the bundle); SF Symbol fallback.
+                let img = NSImage::imageNamed(&ns("MenuBarIcon")).or_else(|| {
+                    NSImage::imageWithSystemSymbolName_accessibilityDescription(&ns("battery.100percent"), Some(&ns("battbar")))
+                });
                 if let Some(i) = &img {
                     i.setTemplate(true);
                 }

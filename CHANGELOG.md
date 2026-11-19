@@ -20,6 +20,16 @@ All notable changes to this project are documented here. The format follows
 - Low-battery alerts say "replace the batteries" for replaceable cells, "charge it" for
   rechargeable devices, and stay neutral when that is unknown.
 
+- App icon (and a matching menu bar glyph when no device is shown), built from SVG by
+  `scripts/build-icon.sh`.
+
+### Fixed
+
+- **Crash when changing "Use headsetcontrol for Other Headsets"** (0.1.0): rebuilding the
+  providers let a new thread enumerate HID devices while the run loop of the exiting
+  thread that had initialised hidapi was being torn down. hidapi now lives on a
+  dedicated thread for the whole process. Hardware regression test included.
+
 ### Changed
 
 - Development builds keep their settings in `~/.config/battbar-dev/`.

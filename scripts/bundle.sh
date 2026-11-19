@@ -38,6 +38,9 @@ cp "$BIN/battbar-app" "$STAGE/Contents/MacOS/battbar-app"
 cp "$BIN/battbar" "$STAGE/Contents/MacOS/battbar"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" -e "s/@BUNDLE_NAME@/$BUNDLE_NAME/g" crates/battbar-app/Info.plist > "$STAGE/Contents/Info.plist"
 cp LICENSE NOTICE "$STAGE/Contents/Resources/"
+# App icon and menu bar template image (built by scripts/build-icon.sh, committed).
+cp crates/battbar-app/resources/AppIcon.icns crates/battbar-app/resources/MenuBarIcon.png \
+   crates/battbar-app/resources/MenuBarIcon@2x.png "$STAGE/Contents/Resources/"
 
 IDENTITY="${BATTBAR_SIGN_IDENTITY:-battbar Development}"
 if security find-identity -p codesigning 2>/dev/null | grep -q "\"$IDENTITY\""; then

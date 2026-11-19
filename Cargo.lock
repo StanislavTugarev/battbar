@@ -130,6 +130,7 @@ dependencies = [
  "battbar-core",
  "battbar-hid",
  "battbar-macos",
+ "battbar-steelseries",
  "serde_json",
  "thiserror",
 ]

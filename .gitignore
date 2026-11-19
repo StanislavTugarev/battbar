@@ -14,3 +14,6 @@
 *.mobileprovision
 *.provisionprofile
 /dist
+
+# Rendered icon concept previews (regenerate from the SVG sources)
+/design/icon/concepts/*.png

@@ -92,18 +92,40 @@ pub fn check_openable(i: &HidInterface) -> Result<(), String> {
     Ok(())
 }
 
+fn new_api() -> Result<HidApi, String> {
+    HidApi::new()
+        .inspect(|_a| {
+            // hidapi opens devices exclusively on macOS by default; that would break
+            // G HUB / GG and the vendor apps would break us.
+            #[cfg(target_os = "macos")]
+            _a.set_open_exclusive(false);
+        })
+        .map_err(|e| e.to_string())
+}
+
 fn api() -> Result<&'static Mutex<HidApi>, TransportError> {
     static API: OnceLock<Result<Mutex<HidApi>, String>> = OnceLock::new();
     API.get_or_init(|| {
-        HidApi::new()
-            .map(|a| {
-                // hidapi opens devices exclusively on macOS by default; that would break
-                // G HUB / GG and the vendor apps would break us.
-                #[cfg(target_os = "macos")]
-                a.set_open_exclusive(false);
-                Mutex::new(a)
-            })
-            .map_err(|e| e.to_string())
+        // On macOS hidapi schedules its IOHIDManager on the run loop of the thread that
+        // creates it (`IOHIDManagerScheduleWithRunLoop(…, CFRunLoopGetCurrent(), …)`), and
+        // every later enumeration schedules devices on that run loop. If that thread
+        // exits — the app rebuilds its provider threads when a setting changes — the
+        // run loop is freed and the next enumeration crashes in CFRunLoopAddSource.
+        // So the manager is created on a dedicated thread that lives for the whole process.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let spawned = std::thread::Builder::new().name("battbar-hid-manager".into()).spawn(move || {
+            let _ = tx.send(new_api());
+            loop {
+                std::thread::park();
+            }
+        });
+        match spawned {
+            Ok(_) => rx
+                .recv()
+                .unwrap_or_else(|_| Err("HID manager thread failed".into()))
+                .map(Mutex::new),
+            Err(e) => Err(e.to_string()),
+        }
     })
     .as_ref()
     .map_err(|e| TransportError::Io(e.clone()))
