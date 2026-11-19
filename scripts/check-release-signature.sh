@@ -4,7 +4,8 @@
 # A different certificate would make macOS ask every user for permissions again.
 #   scripts/check-release-signature.sh target/battbar.app
 set -eu
-APP="$1"
+[ -d "$1" ] || { echo "not a bundle: $1" >&2; exit 2; }
+APP=$(cd "$(dirname "$1")" && pwd)/$(basename "$1") # absolute: the script changes directory
 cd "$(dirname "$0")/.."
 EXPECTED=$(tr 'A-F' 'a-f' < packaging/release-cert.sha1 | tr -d ' \n')
 REQ=$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')
