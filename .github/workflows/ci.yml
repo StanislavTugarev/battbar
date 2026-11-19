@@ -14,7 +14,7 @@ env:
 jobs:
   check:
     name: fmt, clippy, tests (macOS)
-    runs-on: macos-15
+    runs-on: macos-15-intel # arm64 macOS runners were repeatedly unavailable (capacity)
     steps:
       - uses: actions/checkout@v5
         with:
