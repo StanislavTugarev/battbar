@@ -300,7 +300,7 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   peripheral ↔ HID++ unit ID) is stored in the settings as hashes only. Device IDs in
   the settings are hashes as well.
 
-### Stage 3 — Open-source readiness
+### Stage 3 — Open-source readiness ✔ (publishing pending)
 
 - Repository: `README.md`, `CONTRIBUTING.md`, `LICENSE`, `NOTICE`, `CHANGELOG.md`
   (Keep a Changelog), semver.
@@ -315,6 +315,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   with ad-hoc signature and stable bundle identifier, CLI inside the bundle, zip +
   SHA-256 checksums, GitHub Releases.
 - Homebrew: own tap with a cask (installs the app and symlinks the CLI).
+- Release signing: a separate long-lived self-signed "battbar Release" certificate,
+  kept in GitHub Actions secrets (imported into a temporary keychain) and in an offline
+  backup. Release/universal builds only in CI.
+- CI checks that traces in the repository contain only pseudonymized unit IDs (prefix
+  `bba7`) and no Bluetooth addresses, and that no certificates or keys are tracked.
 - Developer ID signing and notarization: **not now**; README explains the Gatekeeper
   workaround; the release workflow is designed so they can be added in one step.
 

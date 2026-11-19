@@ -188,3 +188,42 @@ fn stored_identity_memory_merges_without_gatt_link() {
     IdentityMemory::from_stored(&stored).augment(&mut reports);
     assert_eq!(merge(reports, &MergeConfig::default()).len(), 1);
 }
+
+/// Published traces must not contain real device identifiers: every unit ID the
+/// provider extracts (receiver pairing register or 0x0003) must be a pseudonym, and
+/// nothing that looks like a Bluetooth address may appear.
+#[test]
+fn repository_traces_contain_only_pseudonyms() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../traces");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .collect();
+    files.sort();
+    assert!(!files.is_empty());
+    let mac = |s: &str| {
+        let b = s.as_bytes();
+        (0..b.len().saturating_sub(16)).any(|i| {
+            (0..6).all(|k| b[i + 3 * k].is_ascii_hexdigit() && b[i + 3 * k + 1].is_ascii_hexdigit())
+                && (0..5).all(|k| b[i + 3 * k + 2] == b':' || b[i + 3 * k + 2] == b'-')
+        })
+    };
+    for f in files {
+        let name = f.file_name().unwrap().to_string_lossy().to_string();
+        let text = std::fs::read_to_string(&f).unwrap();
+        assert!(!mac(&text), "{name}: looks like it contains a Bluetooth address");
+        assert!(!text.to_lowercase().contains("serial"), "{name}: mentions a serial number");
+        for r in poll(&[&name]) {
+            for id in &r.identity {
+                if let IdentityKey::HidppUnit { unit_id } = id {
+                    assert!(
+                        unit_id.starts_with(battbar_core::transport::PSEUDONYM_PREFIX),
+                        "{name}: unit ID {unit_id} is not a pseudonym; re-record with `battbar record`"
+                    );
+                }
+            }
+        }
+    }
+}

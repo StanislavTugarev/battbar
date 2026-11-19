@@ -1,3 +1,16 @@
 /target
 *.local.jsonl
 .DS_Store
+# Signing material must never be committed (CI also checks this).
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+*.key
+*.pem
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+/dist

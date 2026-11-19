@@ -46,6 +46,10 @@ pub trait FrameTransport: Send {
     fn read(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>, TransportError>;
 }
 
+/// Unit IDs in published traces are replaced by pseudonyms that start with this
+/// prefix; CI rejects traces with unit IDs that do not.
+pub const PSEUDONYM_PREFIX: &str = "bba7";
+
 pub fn to_hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect::<Vec<_>>().join(" ")
 }

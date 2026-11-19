@@ -1,0 +1,44 @@
+name: Device not detected / new device
+description: battbar does not show a device, or you want a device added.
+labels: ["device support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Please follow [docs/ADDING_A_DEVICE.md](../blob/main/docs/ADDING_A_DEVICE.md) — it takes about five minutes.
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Vendor and model, e.g. "Logitech MX Keys S".
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - Receiver (Logitech Lightspeed / Unifying / Bolt)
+        - Base station / dongle
+        - USB cable
+        - Bluetooth
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: reference
+    attributes:
+      label: Battery level shown by the vendor app or the device
+      placeholder: "G HUB: 57 %, not charging"
+  - type: textarea
+    id: files
+    attributes:
+      label: Dump and trace
+      description: Attach `battbar dump --out battbar-dump.json` and `battbar record --out battbar-trace.jsonl --note "…"` (drag the files here).
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: battbar and macOS versions
+      placeholder: "battbar 0.1.0, macOS 26.1"

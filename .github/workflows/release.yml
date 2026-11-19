@@ -1,0 +1,81 @@
+name: Release
+
+# Push a tag vX.Y.Z (matching the version in Cargo.toml and a CHANGELOG section).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Version, tag and changelog agree
+        id: version
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != Cargo version $VERSION"; exit 1; }
+          scripts/changelog-section.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Tests
+        run: cargo test --workspace
+
+      - name: Build universal binaries
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --target "$t" -p battbar-app -p battbar-cli
+          done
+          mkdir -p target/universal
+          for b in battbar-app battbar; do
+            lipo -create -output "target/universal/$b" \
+              "target/aarch64-apple-darwin/release/$b" "target/x86_64-apple-darwin/release/$b"
+          done
+          lipo -info target/universal/battbar-app
+
+      # Signing: self-signed "battbar Release" certificate from secrets. Developer ID
+      # signing and notarization can replace these two steps later.
+      - name: Import signing certificate
+        env:
+          BATTBAR_RELEASE_P12_BASE64: ${{ secrets.BATTBAR_RELEASE_P12_BASE64 }}
+          BATTBAR_RELEASE_P12_PASSWORD: ${{ secrets.BATTBAR_RELEASE_P12_PASSWORD }}
+        run: scripts/ci-import-cert.sh
+      - name: Bundle and sign
+        env:
+          BATTBAR_BIN_DIR: target/universal
+          BATTBAR_SIGN_IDENTITY: battbar Release
+          BATTBAR_REQUIRE_IDENTITY: "1"
+        run: scripts/bundle.sh
+
+      - name: Package
+        run: |
+          V=${{ steps.version.outputs.version }}
+          mkdir -p dist
+          ditto -c -k --keepParent target/battbar.app "dist/battbar-$V.zip"
+          (cd dist && shasum -a 256 "battbar-$V.zip" > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "battbar ${{ steps.version.outputs.version }}" --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        run: scripts/update-cask.sh "${{ steps.version.outputs.version }}" "$(cut -d' ' -f1 dist/SHA256SUMS)"
+
+      - name: Remove signing keychain
+        if: always()
+        run: scripts/ci-cleanup-keychain.sh

@@ -1,29 +1,106 @@
 # battbar
 
-Menu bar battery indicators for wireless mice, keyboards and headsets on macOS —
-whether they are connected through a 2.4 GHz receiver / base station or over Bluetooth.
-One icon with a percentage per device. Free and open source (GPL-3.0-or-later).
+Battery indicators in the macOS menu bar for wireless mice, keyboards and headsets —
+whether they are connected through a 2.4 GHz receiver or base station, or over
+Bluetooth. One icon with a percentage per device. Free and open source
+(GPL-3.0-or-later), no network access, no telemetry.
 
-Works with Logitech HID++ devices (Lightspeed, Unifying, Bolt, Bluetooth) and
-SteelSeries wireless headsets, plus any Bluetooth device whose battery macOS already
-knows. battbar is not affiliated with or endorsed by Logitech or SteelSeries.
+![battbar in the menu bar: keyboard ~96 %, mouse 59 % charging, headset ~100 %](docs/images/menu-bar.png)
 
-> **Status: early development.** The menu bar app and the command line tool work on
-> the reference hardware; packaging and releases come next. See [`docs/SPEC.md`](docs/SPEC.md) and [`docs/DISCOVERY.md`](docs/DISCOVERY.md).
+Works with Logitech HID++ devices (Lightspeed, Unifying, Bolt receivers, USB cable and
+Bluetooth), SteelSeries wireless headsets, and any Bluetooth device whose battery macOS
+already knows. **battbar is not affiliated with or endorsed by Logitech or SteelSeries.**
+
+## Why
+
+- Devices behind 2.4 GHz receivers are plain USB devices to macOS: it knows nothing
+  about their battery. battbar asks them with the vendor protocols (Logitech HID++ 2.0,
+  SteelSeries base station reports).
+- Over Bluetooth macOS shows the battery only for devices that report it in standard
+  ways, and only in its own UI. battbar shows those too, and talks to Logitech devices
+  over their own Bluetooth service for charging state and details.
+- One device on two connections (a keyboard switched from its receiver to Bluetooth, a
+  headset on its base station and on Bluetooth) stays **one icon**.
+- Vendor apps are heavy and have no menu bar indicators. battbar runs next to them
+  without interfering.
+
+## Install
+
+**Homebrew**
+
+```
+brew install --cask OWNER/battbar/battbar
+```
+
+**Manually:** download `battbar-<version>.zip` from
+[Releases](https://github.com/OWNER/battbar/releases), check it against `SHA256SUMS`,
+unzip and move `battbar.app` to `/Applications`.
+
+**First launch.** battbar is signed with its own certificate but not notarized by
+Apple, so macOS refuses to open it the first time. Open **System Settings → Privacy &
+Security**, scroll down and click **Open Anyway** next to battbar (or, from a terminal:
+`xattr -dr com.apple.quarantine /Applications/battbar.app`). Updates signed with the
+same certificate keep the permissions you granted.
+
+The command line tool `battbar` is installed with the cask (it lives inside the app at
+`battbar.app/Contents/MacOS/battbar`).
+
+## Using it
+
+- Each device gets an icon by type with its battery. `~` means the value is coarse
+  (e.g. 9 levels) or estimated (from voltage); ⚡︎ means charging; a dimmed icon without
+  percentage means the device is asleep or disconnected.
+- Click an icon for details: connection, components (e.g. the spare battery in a base
+  station), where the value comes from, and actions for that device — hide it, merge it
+  with another entry, split it, or unlink a remembered Bluetooth connection.
+- **Settings** (in every menu): launch at login, update interval, low-battery alert
+  threshold (default 15 %, once per discharge), spare-battery alert, Bluetooth devices
+  without battery, `headsetcontrol` fallback. **Other Devices** lists hidden devices.
+
+## Permissions
+
+- **Bluetooth** — to read the battery that macOS already knows for paired Bluetooth
+  devices and to talk to Logitech devices over their vendor Bluetooth service. battbar
+  only looks at devices paired with and connected to this Mac; it never scans.
+- **Notifications** (optional) — low-battery alerts.
+- **No Input Monitoring.** battbar opens only the vendor-specific interfaces of
+  receivers and base stations, which macOS does not treat as input. It cannot read
+  keystrokes and never asks for that permission.
+
+## Privacy
+
+- Only vendor-specific HID interfaces are opened (usage page ≥ 0xFF00). Interfaces that
+  carry keyboard or mouse input are refused by the transport layer, and tests enforce it.
+- On Bluetooth no HID device is opened at all: Logitech devices are queried through
+  their separate vendor GATT service, everything else through the battery value macOS
+  already has.
+- No network access, no telemetry. Settings stay in `~/.config/battbar/`; device
+  identifiers in them are stored as hashes.
+- `battbar dump` and `battbar record` (for bug reports) contain no serial numbers,
+  Bluetooth addresses or keystrokes; unit IDs in traces are replaced with pseudonyms.
+
+## Supported devices
+
+See [docs/SUPPORTED_DEVICES.md](docs/SUPPORTED_DEVICES.md). In short: any Logitech
+HID++ 2.0 device with a battery feature on a listed receiver, cable or Bluetooth LE;
+SteelSeries Arctis Nova Pro Wireless natively, other SteelSeries headsets via
+[HeadsetControl](https://github.com/Sapd/HeadsetControl) if installed; any Bluetooth
+device whose battery macOS knows.
+
+Device missing or value wrong? [docs/ADDING_A_DEVICE.md](docs/ADDING_A_DEVICE.md)
+explains how to collect what we need — no programming required.
 
 ## Command line
 
 ```
 battbar probe [--json]        # poll all devices once
-battbar dump [--out FILE]     # diagnostic report for bug reports (no personal data)
+battbar dump [--out FILE]     # diagnostic report for bug reports
 battbar record --out FILE     # record vendor-interface traffic for a new device
 battbar probe --replay FILE   # answer from a recorded trace instead of hardware
 ```
 
-`--no-bluetooth` skips Bluetooth sources (no permission prompt);
-`--no-headsetcontrol` skips the optional `headsetcontrol` fallback.
-
-Example (reference hardware):
+`--no-bluetooth` skips Bluetooth sources; `--no-headsetcontrol` skips the
+`headsetcontrol` fallback.
 
 ```
 G502 X PLUS  [Mouse]  11%, exact
@@ -38,70 +115,18 @@ Arctis Nova Pro Wireless  [Headset]  83%, exact
   * Bluetooth      macOS (Bluetooth)          83%, exact
 ```
 
-`*` marks the source the percentage comes from; `~` means coarse or approximate.
+`*` marks the source the percentage comes from.
 
-## Architecture
+## Contributing
 
-```
-            ┌──────────────────── battbar-app (menu bar) ─── battbar-cli ┐
-            │                         battbar-core                       │
-            │        Device / Reading, BatteryProvider, merging, DB      │
-            └──────┬──────────────────────┬───────────────────────┬──────┘
-          battbar-hidpp          battbar-steelseries        battbar-bt-system
-     HID++ 2.0 (features,       base-station reports,     battery macOS knows:
-     battery, identity)         headsetcontrol fallback   BLE Battery Service,
-            │                           │                 classic BT audio
-   ┌────────┴─────────┐                 │                         │
- HidapiTransport   GattTransport    HidapiTransport          CoreBluetooth /
- (USB receivers,   (BLE, Logitech   (USB base station)       IOBluetooth
-  vendor iface)     GATT service)
-```
-
-- **One protocol implementation, several links.** Transports move frames; HID++ logic
-  lives once. Recording and replay transports make every provider testable on traces
-  without hardware.
-- **One device, one icon.** A device seen through several providers or transports
-  (keyboard on the receiver, then on Bluetooth) is merged by its HID++ unit ID or
-  another stable identifier.
-- **Device database as data**: `devices/*.toml`, embedded at build time, overridable
-  in `~/.config/battbar/devices/`.
-
-## Permissions
-
-- **Bluetooth** — to read the battery that macOS already knows for paired Bluetooth
-  devices and to talk to Logitech devices over their vendor Bluetooth service. battbar
-  never scans for devices.
-- **Notifications** (optional) — low-battery alerts.
-- **No Input Monitoring.** battbar opens only vendor-specific HID interfaces of
-  receivers and base stations, which macOS does not treat as input; it cannot read
-  keystrokes and never asks for that permission.
-
-## Privacy
-
-- Only vendor-specific HID interfaces are opened (usage page ≥ 0xFF00). Interfaces
-  that carry keyboard or mouse input are refused by the transport layer, and tests
-  enforce it.
-- On Bluetooth no HID device is opened at all. Logitech devices are queried through
-  their separate vendor GATT service; other devices through the battery value macOS
-  already has. battbar never scans for Bluetooth devices; it only looks at devices
-  paired with and connected to your Mac.
-- No network access, no telemetry.
-
-## Development
-
-```
-cargo test --workspace      # all tests run on recorded traces, no hardware needed
-cargo run -p battbar-cli -- probe --no-bluetooth
-```
-
-Bluetooth from a development build: macOS asks for Bluetooth permission for the
-`battbar` binary itself (it re-launches itself so the permission is not attributed to
-your terminal). Every rebuild is a new identity for macOS and asks again, so copy a
-build to a stable path for repeated Bluetooth runs — remove the old file first
-(`rm` then `cp`; overwriting a signed binary in place gets it killed).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and
+the design in [docs/SPEC.md](docs/SPEC.md). Changes are listed in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-GPL-3.0-or-later. Protocol knowledge partly derived from
+GPL-3.0-or-later, see [LICENSE](LICENSE). Protocol knowledge partly derived from
 [Solaar](https://github.com/pwr-Solaar/Solaar) and
-[HeadsetControl](https://github.com/Sapd/HeadsetControl); see [`NOTICE`](NOTICE).
+[HeadsetControl](https://github.com/Sapd/HeadsetControl); see [NOTICE](NOTICE).
+Logitech, Lightspeed, Unifying, Bolt, SteelSeries and Arctis are trademarks of their
+respective owners.

@@ -1,0 +1,26 @@
+# Homebrew cask for battbar; rendered by scripts/update-cask.sh into the tap repository
+# @OWNER@/homebrew-battbar as Casks/battbar.rb.
+cask "battbar" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/@OWNER@/battbar/releases/download/v#{version}/battbar-#{version}.zip"
+  name "battbar"
+  desc "Menu bar battery indicators for wireless mice, keyboards and headsets"
+  homepage "https://github.com/@OWNER@/battbar"
+
+  depends_on macos: ">= :ventura"
+
+  app "battbar.app"
+  binary "#{appdir}/battbar.app/Contents/MacOS/battbar"
+
+  uninstall quit: "io.github.battbar"
+
+  zap trash: "~/.config/battbar"
+
+  caveats <<~EOS
+    battbar is signed with a self-signed certificate, not notarized by Apple.
+    If macOS refuses to open it the first time, open
+    System Settings > Privacy & Security and click "Open Anyway" for battbar.
+  EOS
+end

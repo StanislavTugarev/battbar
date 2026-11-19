@@ -226,6 +226,19 @@ fn redact(v: &mut serde_json::Value) {
     }
 }
 
+/// Pseudonym for a unit ID in traces: the reserved prefix `bba7` (checked in CI)
+/// followed by 4 hex digits of a salted hash.
+fn pseudonym(id: &str) -> String {
+    if id.starts_with(battbar_core::transport::PSEUDONYM_PREFIX) {
+        return id.to_string(); // already a pseudonym (replayed trace)
+    }
+    format!(
+        "{}{}",
+        battbar_core::transport::PSEUDONYM_PREFIX,
+        &short_hash(&format!("battbar-trace:{id}"))[..4]
+    )
+}
+
 /// Replace HID++ unit IDs in a trace with stable pseudonyms (same ID → same pseudonym,
 /// so merging still works when the trace is replayed).
 fn pseudonymize(path: &PathBuf, unit_ids: &[String]) -> std::io::Result<()> {
@@ -240,7 +253,8 @@ fn pseudonymize(path: &PathBuf, unit_ids: &[String]) -> std::io::Result<()> {
         ) else {
             continue;
         };
-        let pseudo = &short_hash(&format!("battbar-unit:{id}"))[..8];
+        let pseudo = pseudonym(id);
+        let pseudo = pseudo.as_str();
         let from = transport::to_hex(&bytes);
         let to = pseudo
             .as_bytes()

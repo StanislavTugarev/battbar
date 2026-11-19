@@ -673,6 +673,9 @@ impl App {
                     NSCellImagePosition::ImageLeft
                 });
                 b.setTitle(&ns(&v.title));
+                b.setEnabled(true);
+                // Native dimming (macOS additionally dims the whole menu bar on an
+                // inactive display; that is not ours).
                 b.setAppearsDisabled(v.dimmed);
                 b.setToolTip(Some(&ns(&v.tooltip)));
             }
