@@ -367,6 +367,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
+- **Development builds use their own configuration directory** (e.g.
+  `~/.config/battbar-dev`), so a dev build never touches the release settings (hash key,
+  links, hidden devices). Related: dev and release use the same HID++ software ID; until
+  this is separated, DEVELOPMENT.md warns not to run both at the same time.
+
 - **0.2.0: battery chemistry and non-rechargeable batteries** (requirements; not
   implemented in 0.1.0, which only guards: 0x1001 below ~3.3 V → "not reported", no
   alerts):

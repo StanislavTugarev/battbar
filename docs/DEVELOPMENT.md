@@ -2,6 +2,12 @@
 
 ## Building and testing
 
+> **Do not run a development build and an installed release at the same time.** Both
+> use the same HID++ software ID, so replies from receivers and devices can be consumed
+> by the wrong process (wrong or missing values in both), and both read and write the
+> same settings in `~/.config/battbar/` (backlog: a separate configuration directory for
+> development builds). Quit one before starting the other.
+
 ```
 cargo test --workspace            # all tests run on recorded traces, no hardware needed
 cargo clippy --workspace --all-targets -- -D warnings
