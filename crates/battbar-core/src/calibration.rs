@@ -162,9 +162,15 @@ pub fn sample(d: &Device) -> Option<(u8, u16)> {
 }
 
 /// Learn from every device that reports both values. Returns whether anything changed.
+/// Calibration learned earlier from a Battery Service now known to be unreliable is
+/// dropped.
 pub fn observe(cals: &mut Vec<VoltageCalibration>, devices: &[Device]) -> bool {
     let mut changed = false;
     for d in devices {
+        if crate::merge::battery_service_unreliable(&d.sources) {
+            changed |= forget(cals, &d.id);
+            continue;
+        }
         let Some((percent, mv)) = sample(d) else { continue };
         let cal = match cals.iter().position(|c| c.device == d.id) {
             Some(i) => &mut cals[i],
@@ -186,6 +192,9 @@ pub fn apply(cals: &[VoltageCalibration], devices: &mut [Device], db: &DeviceDb)
         let Some(cal) = cals.iter().find(|c| c.device == d.id) else {
             continue;
         };
+        if crate::merge::battery_service_unreliable(&d.sources) {
+            continue;
+        }
         let Some(src) = voltage_source(d) else { continue };
         if d.percent_source.as_deref() != Some(&src.full_key()) {
             continue; // an exact source is live and wins anyway
@@ -362,6 +371,30 @@ mod tests {
         assert!(!observe(&mut cals, &[d]));
         // Receiver only: no firmware percentage to learn from.
         assert!(!observe(&mut cals, &[on_receiver(4100)]));
+        assert!(cals.is_empty());
+    }
+
+    #[test]
+    fn unreliable_battery_service_is_never_learned_and_old_samples_are_dropped() {
+        let db = DeviceDb::embedded().unwrap();
+        let mut cals = vec![];
+        for mv in [4170, 4150, 4130] {
+            observe(&mut cals, &[on_bluetooth(mv, 100)]);
+        }
+        assert_eq!(cals.len(), 1, "learned before the device was flagged");
+        let flag = |mut d: Device| {
+            for s in &mut d.sources {
+                s.hints = vec![MergeHint::BatteryServiceUnreliable];
+            }
+            d
+        };
+        // On the receiver the flagged device keeps the generic curve.
+        let mut v = vec![flag(on_receiver(4080))];
+        apply(&cals, &mut v, &db);
+        assert_eq!(v[0].reading.percent, Some(91));
+        assert_eq!(v[0].reading.note, None);
+        // The next observation drops the stored samples and learns nothing.
+        assert!(observe(&mut cals, &[flag(on_bluetooth(4120, 100))]));
         assert!(cals.is_empty());
     }
 

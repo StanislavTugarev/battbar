@@ -10,7 +10,10 @@ vendor_id = 0x046D
 wpid = [0x407C]
 ble_pid = [0xB354]
 usb_pid = [0xC33E]
-notes = "Battery via 0x1001 (voltage) only; no serial number. Verified on Lightspeed and BLE (GATT)."
+# Its BLE Battery Service kept reporting 100 % from 4148 mV down to 4054 mV, while
+# G HUB showed 91 % (2026-11-20); macOS's own Bluetooth battery shows the same 100 %.
+ble_battery_service_unreliable = true
+notes = "Battery via 0x1001 (voltage) only; no serial number. Verified on Lightspeed and BLE (GATT). The BLE Battery Service value is not used (stays at 100 %)."
 
 [[device]]
 name = "G502 X PLUS"

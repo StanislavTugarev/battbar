@@ -144,9 +144,18 @@ Lightspeed to Bluetooth). The core merges such sources into one device and one i
   - **flags** (`charging`, external power, …) are combined from all live sources;
   - `status` is the best of the sources (`ok` > `not reported` > `asleep` >
     `disconnected` > `error`).
-- Examples on the reference hardware: keyboard on Bluetooth — BLE Battery Service 100 %
-  (`exact`) wins over HID++ 0x1001 ~97 % (`approximate`), voltage and charging state
-  still come from HID++; headset on base + Bluetooth — Bluetooth 83 % (`exact`) wins
+- A device database entry can flag a device's BLE Battery Service as unreliable
+  (`ble_battery_service_unreliable`); the HID++ report then carries a hint, and the
+  Battery Service reading of that device is treated as `approximate`, so the vendor
+  protocol wins on the tie. The G915 is flagged: its Battery Service stayed at 100 %
+  from 4148 mV down to 4054 mV while G HUB showed 91 % (macOS shows the same 100 %).
+- Device IDs: a HID++ unit ID wins; otherwise a device in a manual group (including a
+  learned headset ↔ Bluetooth link) takes its ID from the whole group, so it stays the
+  same whether the base, Bluetooth or both are present (before, the ID followed the
+  present sources, and a hidden ID could hide the headset on Bluetooth only).
+- Examples on the reference hardware: keyboard on Bluetooth — HID++ 0x1001 ~88 %
+  (`approximate`) wins over the flagged BLE Battery Service (shown as ~100 %);
+  headset on base + Bluetooth — Bluetooth 83 % (`exact`) wins
   over the base 8/8 (`coarse`), the spare battery and cable-charging state come from
   the base.
 - Which Bluetooth sources exist per device class (all of them are merged by the rule
@@ -256,6 +265,10 @@ A voltage-only device (e.g. G915) can show two different numbers: on Bluetooth L
 firmware reports a percentage (BLE Battery Service, `exact`), on the receiver battbar
 converts the voltage with the generic Li-ion table (`approximate`). Observed on the
 reference keyboard: 100 % on Bluetooth, 91 % on the receiver (4080 mV), 95 % in G HUB.
+Later the G915's Battery Service turned out to be the wrong one (still 100 % at
+4054 mV, G HUB 91 %): it is flagged in the database, and calibration never learns from
+or applies to a device whose Battery Service is flagged (samples learned before are
+dropped).
 
 - While a device reports both at the same time (HID++ 0x1001 voltage and an `exact`
   percentage from another live source), battbar records (firmware %, mV) pairs, at most

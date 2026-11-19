@@ -129,7 +129,9 @@ pub fn merge(reports: Vec<DeviceReport>, cfg: &MergeConfig) -> Vec<Device> {
             continue;
         }
         for hint in &r.hints {
-            let MergeHint::BluetoothCompanion { name_patterns } = hint;
+            let MergeHint::BluetoothCompanion { name_patterns } = hint else {
+                continue;
+            };
             let candidates: Vec<usize> = reports
                 .iter()
                 .enumerate()
@@ -161,14 +163,36 @@ pub fn merge(reports: Vec<DeviceReport>, cfg: &MergeConfig) -> Vec<Device> {
         let root = dsu.find(i);
         groups.entry(root).or_default().push(r);
     }
-    let mut out: Vec<Device> = groups.into_values().map(build_device).collect();
+    let mut out: Vec<Device> = groups
+        .into_values()
+        .map(|sources| {
+            let id = device_id(&sources, cfg);
+            build_device(id, sources)
+        })
+        .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
     out
 }
 
-fn device_id(sources: &[DeviceReport]) -> String {
+/// Stable device ID. A HID++ unit ID wins. Otherwise, for a device in a manual group
+/// (including a learned headset ↔ Bluetooth link) the ID comes from the whole group, so
+/// it does not change with the sources that happen to be present (base only, Bluetooth
+/// only, or both); a hidden or renamed device stays the same device.
+fn device_id(sources: &[DeviceReport], cfg: &MergeConfig) -> String {
     let mut ids: Vec<&IdentityKey> = sources.iter().flat_map(|s| s.identity.iter()).collect();
     ids.sort();
+    if !matches!(ids.first(), Some(IdentityKey::HidppUnit { .. })) {
+        let keys: Vec<String> = sources.iter().map(|s| s.full_key()).collect();
+        let group_min = cfg
+            .manual_groups
+            .iter()
+            .filter(|g| g.iter().any(|k| keys.contains(k)))
+            .flat_map(|g| g.iter())
+            .min();
+        if let Some(k) = group_min {
+            return format!("group:{}", short_hash(k));
+        }
+    }
     match ids.first() {
         // Hashed so settings (hidden devices etc.) never hold raw unit IDs.
         Some(IdentityKey::HidppUnit { unit_id }) => format!("hidpp:{}", crate::ids::keyed_hash("unit", unit_id)),
@@ -234,8 +258,23 @@ fn merge_readings<'a>(items: &[(&'a DeviceReport, &'a Reading)]) -> (Reading, Op
     }
 }
 
-fn build_device(mut sources: Vec<DeviceReport>) -> Device {
+/// Whether any source says the device's BLE Battery Service cannot be trusted.
+pub fn battery_service_unreliable(sources: &[DeviceReport]) -> bool {
+    sources
+        .iter()
+        .any(|s| s.hints.iter().any(|h| matches!(h, MergeHint::BatteryServiceUnreliable)))
+}
+
+fn build_device(id: String, mut sources: Vec<DeviceReport>) -> Device {
     sources.sort_by_key(|s| (provider_priority(&s.provider), s.full_key()));
+    if battery_service_unreliable(&sources) {
+        for s in sources
+            .iter_mut()
+            .filter(|s| s.provider == "bt-system" && s.transport == Transport::BluetoothLe)
+        {
+            s.reading.precision = Precision::Approximate;
+        }
+    }
     let items: Vec<(&DeviceReport, &Reading)> = sources.iter().map(|s| (s, &s.reading)).collect();
     let (reading, percent_source) = merge_readings(&items);
 
@@ -263,7 +302,7 @@ fn build_device(mut sources: Vec<DeviceReport>) -> Device {
         .find(|k| *k != DeviceKind::Other)
         .unwrap_or(DeviceKind::Other);
     let mut d = Device {
-        id: device_id(&sources),
+        id,
         name,
         kind,
         reading,
@@ -595,6 +634,86 @@ mod tests {
             splits: vec!["bt-system/c1".into()],
         };
         assert_eq!(merge(vec![a2, b2], &cfg).len(), 2);
+    }
+
+    #[test]
+    fn learned_link_keeps_one_id_whatever_sources_are_present() {
+        // Headset on the base station, on Bluetooth, or both: same device, same ID,
+        // so hiding or showing it sticks (the ID once followed the present sources).
+        let base = || {
+            rep(
+                "steelseries",
+                "hid:1038:12e0:4:ffc0",
+                "Nova Pro",
+                Transport::BaseStation,
+                Reading::ok(75, Precision::Coarse),
+            )
+        };
+        let bt = || {
+            let mut r = rep(
+                "bt-system",
+                "classic:aa11",
+                "Arctis Nova Pro Wireless",
+                Transport::BluetoothClassic,
+                Reading::ok(60, Precision::Exact),
+            );
+            r.identity = vec![IdentityKey::Stable {
+                namespace: "bt".into(),
+                value: "aa11".into(),
+            }];
+            r
+        };
+        let cfg = MergeConfig {
+            manual_groups: vec![vec!["steelseries/hid:1038:12e0:4:ffc0".into(), "bt-system/classic:aa11".into()]],
+            splits: vec![],
+        };
+        let both = merge(vec![base(), bt()], &cfg);
+        let base_only = merge(vec![base()], &cfg);
+        let bt_only = merge(vec![bt()], &cfg);
+        assert_eq!(both.len(), 1);
+        assert_eq!(both[0].id, base_only[0].id);
+        assert_eq!(both[0].id, bt_only[0].id);
+        assert!(both[0].id.starts_with("group:"));
+        // Without the link the Bluetooth device keeps its own ID.
+        assert_eq!(merge(vec![bt()], &MergeConfig::default())[0].id, "bt:aa11");
+        // A HID++ unit ID still wins over a group.
+        let mut k = rep("hidpp", "rx:1", "K", Transport::Receiver, Reading::ok(50, Precision::Exact));
+        k.identity = vec![unit("bba70001")];
+        let cfg = MergeConfig {
+            manual_groups: vec![vec!["hidpp/rx:1".into(), "bt-system/ble:x".into()]],
+            splits: vec![],
+        };
+        assert!(merge(vec![k], &cfg)[0].id.starts_with("hidpp:"));
+    }
+
+    #[test]
+    fn unreliable_battery_service_loses_to_the_vendor_protocol() {
+        let mut gatt = rep(
+            "hidpp",
+            "gatt:1",
+            "G915",
+            Transport::BluetoothLe,
+            Reading::ok(88, Precision::Approximate),
+        );
+        gatt.identity = vec![unit("bba70002")];
+        gatt.reading.voltage_mv = Some(4054);
+        let mut bas = rep(
+            "bt-system",
+            "ble:1",
+            "G915 KEYBOARD",
+            Transport::BluetoothLe,
+            Reading::ok(100, Precision::Exact),
+        );
+        bas.identity = vec![unit("bba70002")];
+        // Without the database flag the firmware percentage wins (exact > approximate).
+        let d = &merge(vec![gatt.clone(), bas.clone()], &MergeConfig::default())[0];
+        assert_eq!(d.reading.percent, Some(100));
+        gatt.hints = vec![MergeHint::BatteryServiceUnreliable];
+        let d = &merge(vec![gatt, bas], &MergeConfig::default())[0];
+        assert_eq!(d.reading.percent, Some(88));
+        assert_eq!(d.percent_source.as_deref(), Some("hidpp/gatt:1"));
+        let bas = d.sources.iter().find(|s| s.provider == "bt-system").unwrap();
+        assert_eq!(bas.reading.precision, Precision::Approximate);
     }
 
     #[test]

@@ -35,10 +35,10 @@ impl Default for LinkLearner {
 }
 
 fn companion_patterns(r: &DeviceReport) -> Option<&Vec<String>> {
-    r.hints
-        .iter()
-        .map(|MergeHint::BluetoothCompanion { name_patterns }| name_patterns)
-        .next()
+    r.hints.iter().find_map(|h| match h {
+        MergeHint::BluetoothCompanion { name_patterns } => Some(name_patterns),
+        _ => None,
+    })
 }
 
 impl LinkLearner {

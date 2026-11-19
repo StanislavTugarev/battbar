@@ -106,6 +106,11 @@ pub struct DeviceDef {
     /// Bluetooth names of the same device (for conditional merging).
     #[serde(default)]
     pub bt_name_patterns: Vec<String>,
+    /// The BLE Battery Service value of this device does not follow its charge (e.g.
+    /// stays at 100 %); the vendor protocol is preferred and it is never used for
+    /// voltage calibration.
+    #[serde(default)]
+    pub ble_battery_service_unreliable: bool,
     #[serde(default)]
     pub notes: Option<String>,
 }
@@ -375,5 +380,13 @@ mod tests {
             .map(|(n, c)| (n.to_string(), c.to_string()))
             .chain([("bad.toml".to_string(), bad.to_string())]);
         assert!(DeviceDb::from_files(files).is_err());
+    }
+
+    #[test]
+    fn g915_battery_service_is_flagged_unreliable() {
+        let db = DeviceDb::embedded().unwrap();
+        let g915 = db.hidpp_device_by_pid(0x046D, 0xB354).unwrap();
+        assert!(g915.ble_battery_service_unreliable);
+        assert_eq!(db.hidpp_device_by_pid(0x046D, 0x407C).unwrap().name, g915.name);
     }
 }

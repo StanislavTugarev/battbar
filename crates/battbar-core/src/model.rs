@@ -216,6 +216,10 @@ pub enum MergeHint {
     /// A base station states that its headset is currently connected over Bluetooth;
     /// a Bluetooth device whose name matches one of the patterns is the same headset.
     BluetoothCompanion { name_patterns: Vec<String> },
+    /// The device's BLE Battery Service value is known to be unreliable (device
+    /// database). It is then treated as `approximate`, so the vendor protocol wins and
+    /// voltage calibration never learns from it.
+    BatteryServiceUnreliable,
 }
 
 /// What one provider knows about one device at one moment.

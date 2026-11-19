@@ -184,10 +184,10 @@ battbar probe --replay FILE   # answer from a recorded trace instead of hardware
 ```
 G502 X PLUS  [Mouse]  11%, exact
   * receiver       HID++ 0x1004               11%, exact
-G915 WIRELESS RGB MECHANICAL GAMING KEYBOARD  [Keyboard]  100%, 4148 mV, exact
-    Bluetooth LE   HID++ 0x1001               ~97%, 4148 mV, approximate
+G915 WIRELESS RGB MECHANICAL GAMING KEYBOARD  [Keyboard]  ~88%, 4054 mV, approximate
+  * Bluetooth LE   HID++ 0x1001               ~88%, 4054 mV, approximate
     receiver       HID++                      disconnected
-  * Bluetooth LE   BLE Battery Service        100%, exact
+    Bluetooth LE   BLE Battery Service        ~100%, approximate
 Arctis Nova Pro Wireless  [Headset]  83%, exact
     Spare: ~88%, coarse
     base station   SteelSeries base station   ~100%, coarse

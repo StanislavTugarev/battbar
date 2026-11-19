@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- G915 on Bluetooth always showed 100 %: its BLE Battery Service does not follow the
+  charge (still 100 % while G HUB shows 91 %). The device database now flags it, so the
+  value comes from the keyboard's voltage as on the receiver; voltage calibration no
+  longer learns from it, and calibration learned from it in 0.3.0 is dropped.
+- A SteelSeries headset with a learned Bluetooth link could disappear on Bluetooth
+  (base station unplugged): its device ID depended on which connections were present,
+  so a hidden ID from an earlier state could hide it. Linked and manually merged
+  devices now keep one ID. Devices hidden under the old IDs may need to be hidden
+  again.
+
 ## [0.3.0] - 2026-11-19
 
 ### Added

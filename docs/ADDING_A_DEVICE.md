@@ -70,6 +70,9 @@ wpid = [0x4080]          # PID behind a receiver (from `battbar dump`)
 ble_pid = [0xB380]       # PID on Bluetooth LE
 usb_pid = [0xC340]       # PID on a USB cable
 voltage_curve = "example-keyboard"   # only for 0x1001 (voltage) devices
+# Set only if its BLE Battery Service value does not follow the charge (e.g. stays at
+# 100 % while the vendor app shows less): it is then never preferred or learned from.
+# ble_battery_service_unreliable = true
 notes = "Battery via 0x1001."
 
 [[curve]]

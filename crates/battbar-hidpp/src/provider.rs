@@ -318,7 +318,11 @@ impl HidppProvider {
             kind,
             transport,
             identity: unit.map(|u| vec![IdentityKey::HidppUnit { unit_id: hex4(&u) }]).unwrap_or_default(),
-            hints: vec![],
+            hints: if def.is_some_and(|d| d.ble_battery_service_unreliable) {
+                vec![MergeHint::BatteryServiceUnreliable]
+            } else {
+                vec![]
+            },
             reading,
             components: vec![],
         }
