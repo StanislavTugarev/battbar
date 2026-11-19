@@ -43,6 +43,8 @@ enum Action {
     OpenBluetoothSettings,
     OpenNotificationSettings,
     OpenLoginItems,
+    /// Running translocated: reveal the real location so the user can move the app.
+    MoveToApplications,
     SetChemistry(String, Chemistry),
 }
 
@@ -53,6 +55,8 @@ enum Post {
     Message(String),
     /// First-run question (asked once).
     AskLaunchAtLogin,
+    /// Running from a temporary (translocated) copy: explain how to move the app.
+    TranslocationNotice,
     /// Launch at Login needs approval or cannot find the app: explain, offer the pane.
     LoginItemHelp(login::Status),
 }
@@ -144,6 +148,21 @@ fn ns(s: &str) -> Retained<NSString> {
 fn open_url(u: &str) {
     if let Some(url) = NSURL::URLWithString(&ns(u)) {
         NSWorkspace::sharedWorkspace().openURL(&url);
+    }
+}
+
+/// Select the app's real location (e.g. in Downloads) in Finder, so the user can drag it
+/// into Applications. Falls back to the Downloads folder.
+fn reveal_original_location() {
+    let ws = NSWorkspace::sharedWorkspace();
+    if let Some(p) = battbar_macos::bundle::original_path() {
+        let url = NSURL::fileURLWithPath(&ns(&p));
+        ws.activateFileViewerSelectingURLs(&objc2_foundation::NSArray::from_retained_slice(&[url]));
+        return;
+    }
+    if let Some(h) = std::env::var_os("HOME") {
+        let url = NSURL::fileURLWithPath(&ns(&format!("{}/Downloads", h.to_string_lossy())));
+        ws.openURL(&url);
     }
 }
 
@@ -314,6 +333,26 @@ fn run_post(p: Post) {
             }
             with_app(|a| a.render());
         }
+        Post::TranslocationNotice => {
+            NSApplication::sharedApplication(mtm).activate();
+            let alert = NSAlert::new(mtm);
+            alert.setMessageText(&ns("Move battbar to the Applications folder"));
+            alert.setInformativeText(&ns(
+                "battbar is running from a temporary location that macOS creates for apps opened straight from a download. \
+                 Move battbar.app into the Applications folder (drag it there in Finder) and open it from there, so it can \
+                 start at login and keep working after a restart.",
+            ));
+            alert.addButtonWithTitle(&ns("Show in Finder"));
+            alert.addButtonWithTitle(&ns("Later"));
+            let show = alert.runModal() == 1000;
+            with_app(|a| {
+                a.settings.warned_translocation = true;
+                a.save();
+            });
+            if show {
+                reveal_original_location();
+            }
+        }
         Post::LoginItemHelp(st) => {
             NSApplication::sharedApplication(mtm).activate();
             let alert = NSAlert::new(mtm);
@@ -464,6 +503,14 @@ impl App {
                 ));
                 return None;
             }
+            // Never register a login item for a translocated (temporary) copy.
+            Action::ToggleLaunchAtLogin if battbar_macos::bundle::is_translocated() => {
+                return Some(Post::TranslocationNotice);
+            }
+            Action::MoveToApplications => {
+                reveal_original_location();
+                return None;
+            }
             Action::ToggleLaunchAtLogin => {
                 if let Err(e) = login::set(!login::enabled()) {
                     return Some(Post::Message(format!("Could not change Launch at Login: {e}")));
@@ -572,19 +619,17 @@ impl App {
 
     fn settings_menu(&mut self, menu: &NSMenu) {
         let s = self.settings.clone();
-        match login::status() {
-            login::Status::Enabled => self.add(menu, "Launch at Login", Some(Action::ToggleLaunchAtLogin), true, ""),
-            login::Status::NotRegistered | login::Status::NotFound => {
-                self.add(menu, "Launch at Login", Some(Action::ToggleLaunchAtLogin), false, "")
-            }
-            login::Status::RequiresApproval => self.add(
+        if battbar_macos::bundle::is_translocated() {
+            self.add(
                 menu,
-                "Launch at Login — Allow in System Settings…",
-                Some(Action::OpenLoginItems),
+                "Launch at Login — Move battbar to Applications First…",
+                Some(Action::MoveToApplications),
                 false,
                 "",
-            ),
-        };
+            );
+        } else {
+            self.launch_at_login_item(menu);
+        }
         let low = self.submenu(menu, "Low Battery Alert");
         for t in THRESHOLDS {
             let title = t.map(|v| format!("At {v}%")).unwrap_or_else(|| "Off".into());
@@ -624,6 +669,22 @@ impl App {
 
         self.add(menu, "Bluetooth Privacy Settings…", Some(Action::OpenBluetoothSettings), false, "");
         self.add(menu, "Notification Settings…", Some(Action::OpenNotificationSettings), false, "");
+    }
+
+    fn launch_at_login_item(&mut self, menu: &NSMenu) {
+        match login::status() {
+            login::Status::Enabled => self.add(menu, "Launch at Login", Some(Action::ToggleLaunchAtLogin), true, ""),
+            login::Status::NotRegistered | login::Status::NotFound => {
+                self.add(menu, "Launch at Login", Some(Action::ToggleLaunchAtLogin), false, "")
+            }
+            login::Status::RequiresApproval => self.add(
+                menu,
+                "Launch at Login — Allow in System Settings…",
+                Some(Action::OpenLoginItems),
+                false,
+                "",
+            ),
+        };
     }
 
     /// Actions on one device: Hide, Merge With, Split, Unlink.
@@ -733,6 +794,9 @@ impl App {
                 false,
                 "",
             );
+        }
+        if battbar_macos::bundle::is_translocated() {
+            self.add(&menu, "Move battbar to Applications…", Some(Action::MoveToApplications), false, "");
         }
         if matches!(self.bt_authorization, 1 | 2) {
             self.add(&menu, "Bluetooth access needed…", Some(Action::OpenBluetoothSettings), false, "");
@@ -853,6 +917,12 @@ fn main() {
         }
         return;
     }
+    // Development check: `--translocation-info <path of a running translocated app>`.
+    if let Some(i) = std::env::args().position(|a| a == "--translocation-info") {
+        let p = std::env::args().nth(i + 1).unwrap_or_else(battbar_macos::bundle::path);
+        println!("{p} -> {:?}", battbar_macos::bundle::original_path_of(&p));
+        return;
+    }
     if std::env::args().any(|a| a == "--login-status") {
         println!(
             "{:?} translocated={} path={}",
@@ -905,8 +975,17 @@ fn main() {
     // active (a login item registered from the randomised copy would break); answered
     // silently if Launch at Login is already on.
     dispatch2::DispatchQueue::main().exec_async(|| {
+        // Translocated: no login question (it would register a temporary path); tell the
+        // user once how to move the app instead. The menu keeps "Move battbar to
+        // Applications…" for later.
+        if battbar_macos::bundle::is_translocated() {
+            if with_app(|a| !a.settings.warned_translocation) == Some(true) {
+                run_post(Post::TranslocationNotice);
+            }
+            return;
+        }
         let ask = with_app(|a| {
-            if a.settings.asked_launch_at_login || battbar_macos::bundle::is_translocated() {
+            if a.settings.asked_launch_at_login {
                 return false;
             }
             // Already on (or waiting for approval): nothing to ask. NotFound is what an app

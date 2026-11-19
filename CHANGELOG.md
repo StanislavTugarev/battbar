@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format follows
   back on; approval and "not found" cases explain what to do and open System Settings →
   Login Items. The question is postponed while macOS runs the app from a translocated
   copy.
+- When opened straight from a download (App Translocation), battbar explains once how to
+  move it to the Applications folder (*Show in Finder* selects the downloaded copy),
+  keeps *Move battbar to Applications…* in its menu, and does not register Launch at
+  Login for the temporary copy.
 - Experimental support for voltage-only AA/AAA devices (HID++ 0x1001): estimates from
   alkaline or NiMH per-cell curves (published datasheets, always shown with `~`),
   chosen per device under **Batteries** (default alkaline). Device database fields

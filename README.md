@@ -49,7 +49,11 @@ whole tap. Details: [Homebrew Tap Trust](https://docs.brew.sh/Tap-Trust).
 
 **Manually:** download `battbar-<version>.zip` from
 [Releases](https://github.com/StanislavTugarev/battbar/releases), check it against `SHA256SUMS`,
-unzip and move `battbar.app` to `/Applications`.
+unzip and **drag `battbar.app` into the Applications folder before opening it**. An app
+opened straight from Downloads runs from a temporary copy (App Translocation): battbar
+then shows *Move battbar to the Applications folder* once, keeps a *Move battbar to
+Applications…* item in its menu, and does not offer Launch at Login until it has been
+moved.
 
 **First launch (Gatekeeper).** battbar is signed with its own certificate but not
 notarized by Apple, so on current macOS (15 Sequoia, 26 Tahoe) the first start is

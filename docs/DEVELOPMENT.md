@@ -11,6 +11,8 @@
 
 Hidden flags of the app binary (no UI): `battbar-app --login-status` prints the
 SMAppService status, the bundle path and whether App Translocation is active;
+`battbar-app --translocation-info [PATH]` prints the original location of a translocated
+app (via `SecTranslocateCreateOriginalPathForURL`, resolved at run time);
 `battbar-app --unregister-login-item` removes the login item.
 
 ```

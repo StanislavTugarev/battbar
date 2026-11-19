@@ -75,6 +75,8 @@ pub struct Settings {
     pub learned_links: Vec<LearnedLink>,
     /// The first-run "Launch battbar at login?" question was answered.
     pub asked_launch_at_login: bool,
+    /// The "running from a temporary location, move to Applications" notice was shown.
+    pub warned_translocation: bool,
     /// Alkaline / NiMH per device (voltage-only AA/AAA devices; default alkaline).
     pub chemistry: Vec<ChemistryChoice>,
 }
@@ -95,6 +97,7 @@ impl Default for Settings {
             merge: MergeConfig::default(),
             learned_links: vec![],
             asked_launch_at_login: false,
+            warned_translocation: false,
             chemistry: vec![],
         }
     }
