@@ -6,7 +6,7 @@
 use crate::protocol::{Channel, HidppError};
 use battbar_core::devicedb::CurveDef;
 use battbar_core::transport::FrameTransport;
-use battbar_core::{DeviceKind, Precision, Reading, Status};
+use battbar_core::{BatteryInfo, Chemistry, DeviceKind, Precision, Reading, Status};
 
 pub const F_DEVICE_INFO: u16 = 0x0003;
 pub const F_DEVICE_NAME: u16 = 0x0005;
@@ -17,7 +17,9 @@ pub const F_UNIFIED_BATTERY: u16 = 0x1004;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BatteryFeature {
     /// 0x1004; `soc` = state of charge in % supported.
-    Unified { index: u8, soc: bool },
+    /// `rechargeable`: byte1 bit0 of getCapabilities — a hypothesis from two samples
+    /// (docs/DISCOVERY.md), used only to word alerts ("charge" / "replace batteries").
+    Unified { index: u8, soc: bool, rechargeable: Option<bool> },
     /// 0x1001; percent from a discharge curve.
     Voltage { index: u8 },
     /// 0x1000.
@@ -100,6 +102,7 @@ pub fn probe<T: FrameTransport>(ch: &mut Channel<T>, idx: u8, protocol: (u8, u8)
         Some(BatteryFeature::Unified {
             index: fi,
             soc: caps.get(1).is_some_and(|f| f & 0x02 != 0),
+            rechargeable: caps.get(1).map(|f| f & 0x01 != 0),
         })
     } else if let Some((fi, _)) = ch.feature(idx, F_BATTERY_VOLTAGE)? {
         Some(BatteryFeature::Voltage { index: fi })
@@ -116,10 +119,19 @@ pub fn read_battery<T: FrameTransport>(
     idx: u8,
     feature: BatteryFeature,
     curve: Option<(&CurveDef, Precision)>,
+    chemistry: Option<Chemistry>,
+    cells: Option<u8>,
 ) -> Result<Reading, HidppError> {
     Ok(match feature {
-        BatteryFeature::Unified { index, soc } => decode_unified(soc, &ch.call(idx, index, 1, &[])?),
-        BatteryFeature::Voltage { index } => decode_voltage(&ch.call(idx, index, 0, &[])?, curve),
+        BatteryFeature::Unified { index, soc, rechargeable } => {
+            let mut r = decode_unified(soc, &ch.call(idx, index, 1, &[])?);
+            r.battery = Some(BatteryInfo {
+                rechargeable,
+                ..Default::default()
+            });
+            r
+        }
+        BatteryFeature::Voltage { index } => decode_voltage(&ch.call(idx, index, 0, &[])?, curve, chemistry, cells),
         BatteryFeature::Status { index } => decode_status(&ch.call(idx, index, 0, &[])?),
     })
 }
@@ -160,13 +172,22 @@ pub fn decode_unified(soc_supported: bool, r: &[u8]) -> Reading {
 /// AA/AAA cells (1.2–1.6 V per cell). Non-rechargeable batteries are not supported yet.
 pub const NON_LI_ION_BELOW_MV: u16 = 3300;
 
-pub fn decode_voltage(r: &[u8], curve: Option<(&CurveDef, Precision)>) -> Reading {
+/// `chemistry` / `cells` come from the device database. Replaceable cells (database
+/// says alkaline/NiMH, or the voltage is below any Li-ion level) are never mapped
+/// through the Li-ion curve: the reading carries the voltage, and the percentage is
+/// estimated after merging from the chosen chemistry (`battbar_core::cells`).
+pub fn decode_voltage(r: &[u8], curve: Option<(&CurveDef, Precision)>, chemistry: Option<Chemistry>, cells: Option<u8>) -> Reading {
     let mv = u16::from_be_bytes([r[0], r[1]]);
-    if mv > 0 && mv < NON_LI_ION_BELOW_MV {
-        // Never map this through a Li-ion curve (it would read as 0 %).
+    let replaceable = matches!(chemistry, Some(Chemistry::Alkaline | Chemistry::Nimh));
+    if mv > 0 && (replaceable || mv < NON_LI_ION_BELOW_MV) {
         let mut reading = Reading::with_status(Status::NotReported);
         reading.voltage_mv = Some(mv);
         reading.note = Some(battbar_core::ReadingNote::NonRechargeableBattery);
+        reading.battery = Some(BatteryInfo {
+            chemistry: chemistry.filter(|_| replaceable),
+            cells,
+            rechargeable: Some(false),
+        });
         return reading;
     }
     let flags = r[2];
@@ -178,6 +199,11 @@ pub fn decode_voltage(r: &[u8], curve: Option<(&CurveDef, Precision)>) -> Readin
     };
     let mut reading = Reading::ok(percent, precision);
     reading.voltage_mv = Some(mv);
+    reading.battery = Some(BatteryInfo {
+        chemistry: Some(Chemistry::LiIon),
+        cells: None,
+        rechargeable: Some(true),
+    });
     reading.external_power = Some(ext);
     reading.charging = Some(ext && cs == 0);
     if ext && cs == 1 {
@@ -252,18 +278,18 @@ mod tests {
     fn voltage_keyboard_reference_readings() {
         let c = curve();
         // G915 on BLE (GATT), Stage 0: 4158 mV, on battery. G HUB: 100 %.
-        let r = decode_voltage(&[0x10, 0x3e, 0x00], Some((&c, Precision::Approximate)));
+        let r = decode_voltage(&[0x10, 0x3e, 0x00], Some((&c, Precision::Approximate)), None, None);
         assert!(r.percent.unwrap() >= 95, "{r:?}");
         assert_eq!(r.precision, Precision::Approximate);
         assert_eq!(r.charging, Some(false));
         assert_eq!(r.voltage_mv, Some(4158));
         // G915 via Lightspeed with cable, Stage 0: 4200 mV, flags 0x81 (ext power, full).
-        let r = decode_voltage(&[0x10, 0x68, 0x81], Some((&c, Precision::Approximate)));
+        let r = decode_voltage(&[0x10, 0x68, 0x81], Some((&c, Precision::Approximate)), None, None);
         assert_eq!(r.percent, Some(100));
         assert_eq!(r.charging, Some(false));
         assert_eq!(r.external_power, Some(true));
         // Charging.
-        let r = decode_voltage(&[0x0f, 0x00, 0x80], Some((&c, Precision::Approximate)));
+        let r = decode_voltage(&[0x0f, 0x00, 0x80], Some((&c, Precision::Approximate)), None, None);
         assert_eq!(r.charging, Some(true));
     }
 
@@ -272,7 +298,7 @@ mod tests {
         assert_eq!(decode_unified(true, &[0, 0, 4, 0]).percent, None);
         assert_eq!(decode_status(&[0, 0, 6]).status, Status::Error);
         assert_eq!(
-            decode_voltage(&[0x0f, 0, 0x87], Some((&curve(), Precision::Approximate))).percent,
+            decode_voltage(&[0x0f, 0, 0x87], Some((&curve(), Precision::Approximate)), None, None).percent,
             None
         );
     }

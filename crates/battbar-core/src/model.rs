@@ -99,11 +99,34 @@ impl Precision {
     }
 }
 
+/// Battery chemistry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Chemistry {
+    LiIon,
+    Alkaline,
+    Nimh,
+}
+
+/// What is known about the battery itself (not its level).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct BatteryInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chemistry: Option<Chemistry>,
+    /// Number of cells in series (AA/AAA devices).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cells: Option<u8>,
+    /// Charged in the device (`true`) or replaced (`false`); `None` = unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rechargeable: Option<bool>,
+}
+
 /// Why a connected device has no battery value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadingNote {
-    /// Voltage far below any Li-ion level: AA/AAA cells, not supported yet (0.2.0).
+    /// Voltage of replaceable AA/AAA cells; the percentage is computed from the
+    /// chemistry curve after merging (`cells::apply_chemistry`).
     NonRechargeableBattery,
     /// HID++ 1.0 device: battery registers not supported yet.
     Hidpp10Device,
@@ -120,6 +143,8 @@ pub struct Reading {
     pub voltage_mv: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<ReadingNote>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub battery: Option<BatteryInfo>,
 }
 
 impl Reading {
@@ -132,6 +157,7 @@ impl Reading {
             precision,
             voltage_mv: None,
             note: None,
+            battery: None,
         }
     }
 
@@ -144,6 +170,7 @@ impl Reading {
             precision: Precision::Exact,
             voltage_mv: None,
             note: None,
+            battery: None,
         }
     }
 

@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Launch at Login: asked once on first start ("Not Now" is final; the switch stays in
+  Settings). The switch shows the state macOS has registered and never turns itself
+  back on; approval and "not found" cases explain what to do and open System Settings →
+  Login Items. The question is postponed while macOS runs the app from a translocated
+  copy.
+- Experimental support for voltage-only AA/AAA devices (HID++ 0x1001): estimates from
+  alkaline or NiMH per-cell curves (published datasheets, always shown with `~`),
+  chosen per device under **Batteries** (default alkaline). Device database fields
+  `chemistry` and `cells`.
+- Low-battery alerts say "replace the batteries" for replaceable cells, "charge it" for
+  rechargeable devices, and stay neutral when that is unknown.
+
+### Changed
+
+- Development builds keep their settings in `~/.config/battbar-dev/`.
+- Cask: quits battbar and removes its login item on uninstall; `zap` also removes the
+  settings and the menu bar item positions.
+- "Show Bluetooth Devices Without Battery" is now "Show Devices Without Battery Value".
+
 ### Changed
 
 - Installation docs and cask caveats explain Homebrew Tap Trust: install by the fully

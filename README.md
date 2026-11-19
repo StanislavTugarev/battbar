@@ -78,8 +78,19 @@ The command line tool `battbar` is installed with the cask (it lives inside the 
   station), where the value comes from, and actions for that device — hide it, merge it
   with another entry, split it, or unlink a remembered Bluetooth connection.
 - **Settings** (in every menu): launch at login, update interval, low-battery alert
-  threshold (default 15 %, once per discharge), spare-battery alert, Bluetooth devices
-  without battery, `headsetcontrol` fallback. **Other Devices** lists hidden devices.
+  threshold (default 15 %, once per discharge), spare-battery alert, devices without a
+  battery value, `headsetcontrol` fallback. **Other Devices** lists hidden devices.
+- **Launch at Login.** On first start battbar asks once whether it should start at
+  login (*Not Now* means it will not ask again; the switch stays in Settings). The
+  switch always shows what macOS has registered — if you turn battbar off under
+  System Settings → General → Login Items, it stays off. If macOS needs your approval,
+  battbar says so and opens that pane.
+- **AA/AAA batteries (experimental).** Devices whose firmware reports a percentage show
+  it as is. Devices that report only a voltage get an estimate from an alkaline or NiMH
+  discharge curve (choose under the device's **Batteries** menu; default alkaline — the
+  two cannot be told apart by voltage). These values are always marked `~`: the curves
+  come from published cell datasheets, not from measurements on a real device yet.
+  Alerts for such devices say "replace the batteries".
 
 ## Permissions
 
@@ -109,7 +120,8 @@ See [docs/SUPPORTED_DEVICES.md](docs/SUPPORTED_DEVICES.md). In short: any Logite
 HID++ 2.0 device with a battery feature on a listed receiver, cable or Bluetooth LE;
 SteelSeries Arctis Nova Pro Wireless natively, other SteelSeries headsets via
 [HeadsetControl](https://github.com/Sapd/HeadsetControl) if installed; any Bluetooth
-device whose battery macOS knows.
+device whose battery macOS knows. Voltage-only devices on AA/AAA cells are supported
+experimentally (estimates from alkaline/NiMH curves).
 
 Device missing or value wrong? [docs/ADDING_A_DEVICE.md](docs/ADDING_A_DEVICE.md)
 explains how to collect what we need — no programming required.

@@ -393,7 +393,9 @@ battbar calls 0x1004 function 0 (getCapabilities) and reads the parameter bytes 
 - **byte1** is treated as flags. battbar 0.1.0 uses only bit 1 (`0x02`, "state of
   charge in % supported") to decide `exact` vs level-based `coarse`.
 - The idea "bit 0 of byte1 = rechargeable" comes only from these two samples (G502
-  `0x0f` has it, Pebble `0x02` does not). It is **unconfirmed**.
+  `0x0f` has it, Pebble `0x02` does not). It is **unconfirmed — a hypothesis from 2
+  samples**. Since 0.2.0 battbar uses it only to word low-battery alerts ("charge it" /
+  "replace the batteries"); without the byte the wording is neutral.
 - **Solaar does not call getCapabilities at all** (`lib/logitech_receiver/hidpp20.py`,
   `get_battery_unified` / `decipher_battery_unified`): it reads only getStatus
   `[discharge %, level, status, —]`, treats `level` as a single bit (8 full, 4 good,

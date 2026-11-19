@@ -59,6 +59,10 @@ impl Default for SettlingTracker {
 impl SettlingTracker {
     pub fn apply(&mut self, now: Instant, devices: &mut [Device]) {
         for d in devices.iter_mut() {
+            // Replaceable cells are never charged in the device.
+            if d.reading.battery.is_some_and(|b| b.rechargeable == Some(false)) {
+                continue;
+            }
             if d.reading.charging == Some(true) {
                 self.last_charging.insert(d.id.clone(), now);
                 continue;

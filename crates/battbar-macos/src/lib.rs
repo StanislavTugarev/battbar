@@ -7,6 +7,8 @@
 #[cfg(target_os = "macos")]
 pub mod ble;
 #[cfg(target_os = "macos")]
+pub mod bundle;
+#[cfg(target_os = "macos")]
 pub mod classic;
 #[cfg(target_os = "macos")]
 pub mod tcc;

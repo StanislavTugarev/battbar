@@ -83,6 +83,19 @@ pub fn component_name(k: ComponentKind) -> &'static str {
 /// Informational lines of a device menu (disabled items).
 pub fn detail_lines(d: &Device) -> Vec<String> {
     let mut v = vec![format!("Battery: {}", status_text(&d.reading))];
+    if let Some(b) = d.reading.battery.filter(|b| b.rechargeable == Some(false)) {
+        let chem = match b.chemistry {
+            Some(Chemistry::Nimh) => "NiMH",
+            _ => "Alkaline",
+        };
+        let cells = b.cells.map(|c| format!(" × {c}")).unwrap_or_default();
+        let mv = d
+            .reading
+            .voltage_mv
+            .map(|m| format!(", {:.2} V", m as f32 / 1000.0))
+            .unwrap_or_default();
+        v.push(format!("Batteries: {chem}{cells}{mv} (estimate, experimental)"));
+    }
     match d.estimate {
         Some(Estimate::Charging) => v.push("Estimated while charging".into()),
         Some(Estimate::Settling) => v.push("Estimated: settling after charging".into()),

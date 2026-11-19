@@ -2,6 +2,38 @@
 //! User settings, stored locally in `~/.config/battbar/config.toml`.
 
 use crate::merge::MergeConfig;
+use crate::model::Chemistry;
+use std::sync::RwLock;
+
+static CONFIG_DIR: RwLock<Option<PathBuf>> = RwLock::new(None);
+
+/// Use a different configuration directory for this process (development builds use
+/// `~/.config/battbar-dev`, so they never touch the release settings).
+pub fn set_config_dir(dir: PathBuf) {
+    *CONFIG_DIR.write().unwrap() = Some(dir);
+}
+
+/// `~/.config/battbar` (release) or the directory set with [`set_config_dir`].
+pub fn config_dir() -> Option<PathBuf> {
+    if let Some(d) = CONFIG_DIR.read().unwrap().clone() {
+        return Some(d);
+    }
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/battbar"))
+}
+
+/// Development profile: `~/.config/battbar-dev`.
+pub fn use_dev_profile() {
+    if let Some(h) = std::env::var_os("HOME") {
+        set_config_dir(PathBuf::from(h).join(".config/battbar-dev"));
+    }
+}
+
+/// The user's choice of cell chemistry for a device with replaceable AA/AAA cells.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChemistryChoice {
+    pub device: String,
+    pub chemistry: Chemistry,
+}
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -41,6 +73,10 @@ pub struct Settings {
     pub identity_memory: Vec<Vec<String>>,
     pub merge: MergeConfig,
     pub learned_links: Vec<LearnedLink>,
+    /// The first-run "Launch battbar at login?" question was answered.
+    pub asked_launch_at_login: bool,
+    /// Alkaline / NiMH per device (voltage-only AA/AAA devices; default alkaline).
+    pub chemistry: Vec<ChemistryChoice>,
 }
 
 impl Default for Settings {
@@ -58,13 +94,27 @@ impl Default for Settings {
             identity_memory: vec![],
             merge: MergeConfig::default(),
             learned_links: vec![],
+            asked_launch_at_login: false,
+            chemistry: vec![],
         }
     }
 }
 
 impl Settings {
     pub fn path() -> Option<PathBuf> {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/battbar/config.toml"))
+        config_dir().map(|d| d.join("config.toml"))
+    }
+
+    pub fn chemistry_for(&self, device: &str) -> Option<Chemistry> {
+        self.chemistry.iter().find(|c| c.device == device).map(|c| c.chemistry)
+    }
+
+    pub fn set_chemistry(&mut self, device: &str, chemistry: Chemistry) {
+        self.chemistry.retain(|c| c.device != device);
+        self.chemistry.push(ChemistryChoice {
+            device: device.into(),
+            chemistry,
+        });
     }
 
     /// Settings from disk; defaults if missing or unreadable.

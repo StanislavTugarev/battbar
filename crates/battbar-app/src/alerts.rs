@@ -19,6 +19,29 @@ pub struct Alert {
     pub body: String,
 }
 
+/// Wording by battery type. The "rechargeable" flag of 0x1004 is a hypothesis
+/// (DISCOVERY); when it is unknown the text stays neutral.
+pub fn low_battery_alert(d: &Device, p: u8) -> Alert {
+    let id = format!("low-{}", d.id);
+    match d.reading.battery.and_then(|b| b.rechargeable) {
+        Some(true) => Alert {
+            id,
+            title: format!("{} battery low", d.name),
+            body: format!("{p}% remaining. Charge it soon."),
+        },
+        Some(false) => Alert {
+            id,
+            title: format!("{}: replace the batteries", d.name),
+            body: format!("About {p}% remaining."),
+        },
+        None => Alert {
+            id,
+            title: format!("{} battery low", d.name),
+            body: format!("{p}% remaining."),
+        },
+    }
+}
+
 #[derive(Default)]
 pub struct AlertTracker {
     low_sent: HashSet<String>,
@@ -35,11 +58,7 @@ impl AlertTracker {
                     self.low_sent.remove(&d.id);
                 } else if p <= th && !self.low_sent.contains(&d.id) {
                     self.low_sent.insert(d.id.clone());
-                    out.push(Alert {
-                        id: format!("low-{}", d.id),
-                        title: format!("{} battery low", d.name),
-                        body: format!("{p}% remaining."),
-                    });
+                    out.push(low_battery_alert(d, p));
                 }
             }
             for c in d.components.iter().filter(|c| c.kind == ComponentKind::Spare) {
@@ -122,6 +141,43 @@ mod tests {
         let mut t = AlertTracker::default();
         assert_eq!(check(&mut t, 9, Some(Estimate::Settling)), 0);
         assert_eq!(check(&mut t, 9, None), 1, "alert once the value is measured again");
+    }
+
+    #[test]
+    fn wording_depends_on_battery_type() {
+        let mut d = dev(9, None);
+        d.reading.battery = Some(BatteryInfo {
+            rechargeable: Some(false),
+            ..Default::default()
+        });
+        let a = low_battery_alert(&d, 9);
+        assert!(a.title.contains("replace the batteries"), "{a:?}");
+        assert!(!a.body.to_lowercase().contains("charge"));
+        d.reading.battery = Some(BatteryInfo {
+            rechargeable: Some(true),
+            ..Default::default()
+        });
+        assert!(low_battery_alert(&d, 9).body.contains("Charge"));
+        d.reading.battery = None;
+        let a = low_battery_alert(&d, 9);
+        assert_eq!(a.title, "Mouse battery low");
+        assert!(!a.body.contains("Charge") && !a.title.contains("replace"));
+    }
+
+    #[test]
+    fn replaceable_cells_alert_after_chemistry_estimate() {
+        // AA device: estimated percentage (approximate, no charging logic) still alerts.
+        let mut t = AlertTracker::default();
+        let mut d = dev(10, None);
+        d.reading.precision = Precision::Approximate;
+        d.reading.battery = Some(BatteryInfo {
+            chemistry: Some(Chemistry::Alkaline),
+            cells: Some(2),
+            rechargeable: Some(false),
+        });
+        let a = t.check(&[d], Some(15), false);
+        assert_eq!(a.len(), 1);
+        assert!(a[0].title.contains("replace the batteries"));
     }
 
     #[test]

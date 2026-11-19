@@ -2,6 +2,7 @@
 //! battbar core: data model, provider trait and polling engine, source merging,
 //! device database and the frame transport abstraction.
 
+pub mod cells;
 pub mod charge;
 pub mod devicedb;
 pub mod ids;

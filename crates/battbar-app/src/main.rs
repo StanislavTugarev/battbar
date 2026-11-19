@@ -42,6 +42,8 @@ enum Action {
     Unlink(String),
     OpenBluetoothSettings,
     OpenNotificationSettings,
+    OpenLoginItems,
+    SetChemistry(String, Chemistry),
 }
 
 /// Work that must run after the app state borrow is released (modal UI, terminate).
@@ -49,6 +51,10 @@ enum Post {
     Quit,
     BluetoothAlert,
     Message(String),
+    /// First-run question (asked once).
+    AskLaunchAtLogin,
+    /// Launch at Login needs approval or cannot find the app: explain, offer the pane.
+    LoginItemHelp(login::Status),
 }
 
 struct App {
@@ -63,6 +69,7 @@ struct App {
     alerts: AlertTracker,
     identities: IdentityMemory,
     gate: NewDeviceGate,
+    db: DeviceDb,
     settling: SettlingTracker,
     /// Device IDs the new-device gate has admitted.
     admitted: Vec<String>,
@@ -149,10 +156,42 @@ fn local_time() -> String {
     }
 }
 
+/// Launch at Login through `SMAppService.mainApp`. The state shown is always the
+/// system's (`status`), never a copy in our settings; `register()` is only ever called
+/// on an explicit user action.
 mod login {
     use objc2_service_management::{SMAppService, SMAppServiceStatus};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Status {
+        Enabled,
+        NotRegistered,
+        /// Registered, but the user has to allow it in System Settings → Login Items.
+        RequiresApproval,
+        /// No login item known to the system. Returned for an app that was never
+        /// registered as well; only after a failed `register()` does it mean a problem.
+        NotFound,
+    }
+
+    pub fn status() -> Status {
+        let s = unsafe { SMAppService::mainAppService().status() };
+        if s == SMAppServiceStatus::Enabled {
+            Status::Enabled
+        } else if s == SMAppServiceStatus::RequiresApproval {
+            Status::RequiresApproval
+        } else if s == SMAppServiceStatus::NotFound {
+            Status::NotFound
+        } else {
+            Status::NotRegistered
+        }
+    }
+
     pub fn enabled() -> bool {
-        unsafe { SMAppService::mainAppService().status() == SMAppServiceStatus::Enabled }
+        status() == Status::Enabled
+    }
+
+    pub fn open_settings() {
+        unsafe { SMAppService::openSystemSettingsLoginItems() };
     }
     pub fn set(on: bool) -> Result<(), String> {
         let s = unsafe { SMAppService::mainAppService() };
@@ -249,12 +288,65 @@ fn run_post(p: Post) {
             alert.setMessageText(&ns(&m));
             alert.runModal();
         }
+        Post::AskLaunchAtLogin => {
+            NSApplication::sharedApplication(mtm).activate();
+            let alert = NSAlert::new(mtm);
+            alert.setMessageText(&ns("Launch battbar at login?"));
+            alert.setInformativeText(&ns(
+                "battbar can start automatically when you log in, so the battery icons are always there. \
+                 You can change this later under Settings in the battbar menu.",
+            ));
+            alert.addButtonWithTitle(&ns("Launch at Login"));
+            alert.addButtonWithTitle(&ns("Not Now"));
+            let yes = alert.runModal() == 1000;
+            with_app(|a| {
+                a.settings.asked_launch_at_login = true; // "Not Now" = do not ask again
+                a.save();
+            });
+            if yes {
+                if let Err(e) = login::set(true) {
+                    run_post(Post::Message(format!("Could not turn on Launch at Login: {e}")));
+                }
+                let st = login::status();
+                if matches!(st, login::Status::RequiresApproval | login::Status::NotFound) {
+                    run_post(Post::LoginItemHelp(st));
+                }
+            }
+            with_app(|a| a.render());
+        }
+        Post::LoginItemHelp(st) => {
+            NSApplication::sharedApplication(mtm).activate();
+            let alert = NSAlert::new(mtm);
+            match st {
+                login::Status::RequiresApproval => {
+                    alert.setMessageText(&ns("Allow battbar in Login Items"));
+                    alert.setInformativeText(&ns(
+                        "macOS needs your approval before battbar can start at login. Turn battbar on under \
+                         System Settings → General → Login Items & Extensions.",
+                    ));
+                }
+                _ => {
+                    alert.setMessageText(&ns("Launch at Login is not available"));
+                    alert.setInformativeText(&ns(
+                        "macOS cannot find battbar's login item. Move battbar.app to the Applications folder, open it \
+                         from there and try again, or check System Settings → General → Login Items & Extensions.",
+                    ));
+                }
+            }
+            alert.addButtonWithTitle(&ns("Open Login Items"));
+            alert.addButtonWithTitle(&ns("Cancel"));
+            if alert.runModal() == 1000 {
+                login::open_settings();
+            }
+        }
     }
 }
 
 impl App {
     fn recompute(&mut self) {
         self.devices = merge(self.reports.clone(), &self.settings.merge_config());
+        let settings = &self.settings;
+        battbar_core::cells::apply_chemistry(&mut self.devices, &self.db, |id| settings.chemistry_for(id));
         self.settling.apply(std::time::Instant::now(), &mut self.devices);
     }
 
@@ -376,7 +468,17 @@ impl App {
                 if let Err(e) = login::set(!login::enabled()) {
                     return Some(Post::Message(format!("Could not change Launch at Login: {e}")));
                 }
+                let st = login::status();
+                if matches!(st, login::Status::RequiresApproval | login::Status::NotFound) {
+                    self.dirty = true;
+                    return Some(Post::LoginItemHelp(st));
+                }
             }
+            Action::OpenLoginItems => {
+                login::open_settings();
+                return None;
+            }
+            Action::SetChemistry(id, chem) => self.settings.set_chemistry(&id, chem),
             Action::SetThreshold(t) => self.settings.low_battery_threshold = t,
             Action::SetInterval(s) => {
                 self.settings.poll_interval_secs = s;
@@ -470,7 +572,19 @@ impl App {
 
     fn settings_menu(&mut self, menu: &NSMenu) {
         let s = self.settings.clone();
-        self.add(menu, "Launch at Login", Some(Action::ToggleLaunchAtLogin), login::enabled(), "");
+        match login::status() {
+            login::Status::Enabled => self.add(menu, "Launch at Login", Some(Action::ToggleLaunchAtLogin), true, ""),
+            login::Status::NotRegistered | login::Status::NotFound => {
+                self.add(menu, "Launch at Login", Some(Action::ToggleLaunchAtLogin), false, "")
+            }
+            login::Status::RequiresApproval => self.add(
+                menu,
+                "Launch at Login — Allow in System Settings…",
+                Some(Action::OpenLoginItems),
+                false,
+                "",
+            ),
+        };
         let low = self.submenu(menu, "Low Battery Alert");
         for t in THRESHOLDS {
             let title = t.map(|v| format!("At {v}%")).unwrap_or_else(|| "Off".into());
@@ -514,6 +628,24 @@ impl App {
 
     /// Actions on one device: Hide, Merge With, Split, Unlink.
     fn device_actions(&mut self, menu: &NSMenu, d: &Device, visible: bool) {
+        if battbar_core::cells::has_selectable_chemistry(d) {
+            let current = d.reading.battery.and_then(|b| b.chemistry);
+            let sub = self.submenu(menu, "Batteries");
+            self.add(
+                &sub,
+                "Alkaline",
+                Some(Action::SetChemistry(d.id.clone(), Chemistry::Alkaline)),
+                current == Some(Chemistry::Alkaline),
+                "",
+            );
+            self.add(
+                &sub,
+                "NiMH (rechargeable AA/AAA)",
+                Some(Action::SetChemistry(d.id.clone(), Chemistry::Nimh)),
+                current == Some(Chemistry::Nimh),
+                "",
+            );
+        }
         if visible {
             self.add(menu, "Hide from Menu Bar", Some(Action::Hide(d.id.clone())), false, "");
         } else {
@@ -709,6 +841,27 @@ fn deliver(u: PollUpdate, retries: u8) {
 }
 
 fn main() {
+    // Used by the Homebrew cask on uninstall: remove the login item, no UI.
+    if std::env::args().any(|a| a == "--unregister-login-item") {
+        if matches!(login::status(), login::Status::Enabled | login::Status::RequiresApproval) {
+            if let Err(e) = login::set(false) {
+                eprintln!("battbar: {e}");
+            }
+        }
+        return;
+    }
+    if std::env::args().any(|a| a == "--login-status") {
+        println!(
+            "{:?} translocated={} path={}",
+            login::status(),
+            battbar_macos::bundle::is_translocated(),
+            battbar_macos::bundle::path()
+        );
+        return;
+    }
+    if battbar_macos::bundle::is_dev_build() {
+        battbar_core::settings::use_dev_profile();
+    }
     let mtm = MainThreadMarker::new().expect("main thread");
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
@@ -730,6 +883,8 @@ fn main() {
         alerts: AlertTracker::default(),
         identities: IdentityMemory::from_stored(&settings_identity),
         gate: NewDeviceGate::default(),
+        db: DeviceDb::load_with_overrides(DeviceDb::user_dir().as_deref())
+            .unwrap_or_else(|_| DeviceDb::embedded().expect("built-in device database")),
         settling: SettlingTracker::default(),
         admitted: vec![],
         last_update: None,
@@ -743,5 +898,26 @@ fn main() {
     APP.with(|c| *c.borrow_mut() = Some(state));
     with_app(|a| a.render());
     notify::request_authorization();
+    // First-run question, once the run loop is up. Postponed while App Translocation is
+    // active (a login item registered from the randomised copy would break); answered
+    // silently if Launch at Login is already on.
+    dispatch2::DispatchQueue::main().exec_async(|| {
+        let ask = with_app(|a| {
+            if a.settings.asked_launch_at_login || battbar_macos::bundle::is_translocated() {
+                return false;
+            }
+            // Already on (or waiting for approval): nothing to ask. NotFound is what an app
+            // that never registered gets, so it is asked like NotRegistered.
+            if matches!(login::status(), login::Status::Enabled | login::Status::RequiresApproval) {
+                a.settings.asked_launch_at_login = true;
+                a.save();
+                return false;
+            }
+            true
+        });
+        if ask == Some(true) {
+            run_post(Post::AskLaunchAtLogin);
+        }
+    });
     app.run();
 }

@@ -40,6 +40,11 @@ pub fn decode(r: &[u8]) -> NovaProStatus {
         }
         _ => Reading::with_status(Status::Error),
     };
+    let mut headset = headset;
+    headset.battery = Some(battbar_core::BatteryInfo {
+        rechargeable: Some(true),
+        ..Default::default()
+    });
     let spare = (r[7] <= BATTERY_MAX).then(|| Reading::ok(level_to_percent(r[7]), Precision::Coarse));
     NovaProStatus {
         headset,

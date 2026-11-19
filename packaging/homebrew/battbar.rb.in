@@ -14,9 +14,15 @@ cask "battbar" do
   app "battbar.app"
   binary "#{appdir}/battbar.app/Contents/MacOS/battbar"
 
-  uninstall quit: "io.github.battbar"
+  # Quit the app and remove its "Open at Login" item (registered with SMAppService;
+  # System Events lists it by name). The app is not executed during uninstall.
+  uninstall quit:       "io.github.battbar",
+            login_item: "battbar"
 
-  zap trash: "~/.config/battbar"
+  zap trash: [
+    "~/.config/battbar",
+    "~/Library/Preferences/io.github.battbar.plist",
+  ]
 
   caveats <<~EOS
     battbar is signed with its own certificate but not notarized by Apple.

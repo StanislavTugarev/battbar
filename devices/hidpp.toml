@@ -20,3 +20,28 @@ points = [
   [4186, 100], [4067, 90], [3989, 80], [3922, 70], [3859, 60], [3811, 50],
   [3778, 40], [3751, 30], [3717, 20], [3671, 10], [3646, 5], [3579, 2], [3500, 0],
 ]
+
+# Replaceable AA/AAA cells (HID++ 0x1001 voltage only). EXPERIMENTAL: no real
+# voltage-only battery device has been measured yet; points are per cell, read from
+# the shape of published low-drain discharge curves, and always shown as estimates.
+[[curve]]
+id = "alkaline-cell"
+chemistry = "alkaline"
+per_cell = true
+precision = "approximate"
+source = "Approximated from published low-drain alkaline AA discharge curves (e.g. Energizer E91 product datasheet); not measured on a device"
+points = [
+  [1600, 100], [1500, 92], [1450, 85], [1400, 75], [1350, 63], [1300, 50],
+  [1250, 38], [1200, 27], [1150, 18], [1100, 11], [1050, 6], [1000, 3], [900, 0],
+]
+
+[[curve]]
+id = "nimh-cell"
+chemistry = "nimh"
+per_cell = true
+precision = "approximate"
+source = "Approximated from published low-self-discharge NiMH AA discharge curves (e.g. Panasonic eneloop datasheet); not measured on a device"
+points = [
+  [1400, 100], [1350, 95], [1300, 85], [1270, 75], [1250, 65], [1230, 55],
+  [1210, 45], [1190, 35], [1170, 25], [1150, 17], [1120, 10], [1080, 5], [1000, 0],
+]

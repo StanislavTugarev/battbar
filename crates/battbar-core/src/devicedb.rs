@@ -3,7 +3,7 @@
 //! `~/.config/battbar/devices/*.toml`. Adding a device that speaks an already supported
 //! protocol is a data change only.
 
-use crate::model::{DeviceKind, Precision};
+use crate::model::{Chemistry, DeviceKind, Precision};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -97,6 +97,12 @@ pub struct DeviceDef {
     /// Discharge curve ID for voltage-only battery features.
     #[serde(default)]
     pub voltage_curve: Option<String>,
+    /// Battery chemistry; `alkaline` / `nimh` for AA/AAA devices.
+    #[serde(default)]
+    pub chemistry: Option<Chemistry>,
+    /// Cells in series (AA/AAA devices); inferred from the voltage if absent.
+    #[serde(default)]
+    pub cells: Option<u8>,
     /// Bluetooth names of the same device (for conditional merging).
     #[serde(default)]
     pub bt_name_patterns: Vec<String>,
@@ -109,6 +115,12 @@ pub struct DeviceDef {
 pub struct CurveDef {
     pub id: String,
     pub precision: Precision,
+    /// Chemistry this curve describes (used to pick a curve by chemistry).
+    #[serde(default)]
+    pub chemistry: Option<Chemistry>,
+    /// Points are per cell; the pack voltage is divided by the number of cells.
+    #[serde(default)]
+    pub per_cell: bool,
     /// `[millivolts, percent]`, any order.
     pub points: Vec<[u16; 2]>,
     #[serde(default)]
@@ -188,7 +200,7 @@ impl DeviceDb {
     }
 
     pub fn user_dir() -> Option<PathBuf> {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/battbar/devices"))
+        crate::settings::config_dir().map(|d| d.join("devices"))
     }
 
     pub fn from_files(files: impl IntoIterator<Item = (String, String)>) -> Result<Self, DbError> {
@@ -276,6 +288,11 @@ impl DeviceDb {
         self.curve(DEFAULT_CURVE_ID).map(|c| (c, Precision::Approximate))
     }
 
+    /// Per-cell curve for a replaceable-battery chemistry.
+    pub fn chemistry_curve(&self, chem: Chemistry) -> Option<&CurveDef> {
+        self.curves.iter().find(|c| c.chemistry == Some(chem) && c.per_cell)
+    }
+
     /// Find a HID++ device by any of its PIDs (wpid, BLE, BT, USB).
     pub fn hidpp_device_by_pid(&self, vid: u16, pid: u16) -> Option<&DeviceDef> {
         self.devices.iter().find(|d| {
@@ -312,6 +329,8 @@ mod tests {
         let c = CurveDef {
             id: "t".into(),
             precision: Precision::Approximate,
+            chemistry: None,
+            per_cell: false,
             points: vec![[3500, 0], [4200, 100], [3850, 50]],
             source: None,
         };

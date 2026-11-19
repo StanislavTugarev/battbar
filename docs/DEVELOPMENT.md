@@ -4,9 +4,14 @@
 
 > **Do not run a development build and an installed release at the same time.** Both
 > use the same HID++ software ID, so replies from receivers and devices can be consumed
-> by the wrong process (wrong or missing values in both), and both read and write the
-> same settings in `~/.config/battbar/` (backlog: a separate configuration directory for
-> development builds). Quit one before starting the other.
+> by the wrong process (wrong or missing values in both). Quit one before starting the
+> other. Settings are separate since 0.2.0: development builds (bundle ID
+> `io.github.battbar.dev`, or any debug build) use `~/.config/battbar-dev/`, releases
+> `~/.config/battbar/`.
+
+Hidden flags of the app binary (no UI): `battbar-app --login-status` prints the
+SMAppService status, the bundle path and whether App Translocation is active;
+`battbar-app --unregister-login-item` removes the login item.
 
 ```
 cargo test --workspace            # all tests run on recorded traces, no hardware needed

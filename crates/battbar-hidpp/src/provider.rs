@@ -301,7 +301,14 @@ impl HidppProvider {
     fn battery(&self, link: &mut OpenLink, idx: u8, vid: u16, pids: &[u16], feature: BatteryFeature) -> Result<Reading, HidppError> {
         let def = self.device_def(vid, pids);
         let curve = self.db.curve_for(def);
-        device::read_battery(&mut link.ch, idx, feature, curve)
+        device::read_battery(
+            &mut link.ch,
+            idx,
+            feature,
+            curve,
+            def.and_then(|d| d.chemistry),
+            def.and_then(|d| d.cells),
+        )
     }
 
     fn poll_receiver(&mut self, link_id: &str, def: &ReceiverDef, link: &mut OpenLink) -> Result<Vec<DeviceReport>, HidppError> {

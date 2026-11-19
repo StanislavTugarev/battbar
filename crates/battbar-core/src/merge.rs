@@ -213,6 +213,7 @@ fn merge_readings<'a>(items: &[(&'a DeviceReport, &'a Reading)]) -> (Reading, Op
                 precision: r.precision,
                 voltage_mv: r.voltage_mv.or_else(|| items.iter().find_map(|(_, x)| x.voltage_mv)),
                 note: None,
+                battery: r.battery.or_else(|| items.iter().find_map(|(_, x)| x.battery)),
             },
             Some(src.full_key()),
         ),
@@ -227,6 +228,7 @@ fn merge_readings<'a>(items: &[(&'a DeviceReport, &'a Reading)]) -> (Reading, Op
             r.external_power = external_power;
             r.note = items.iter().find(|(_, x)| x.status == status).and_then(|(_, x)| x.note);
             r.voltage_mv = items.iter().find_map(|(_, x)| x.voltage_mv);
+            r.battery = items.iter().find_map(|(_, x)| x.battery);
             (r, None)
         }
     }

@@ -367,12 +367,15 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
-- **Development builds use their own configuration directory** (e.g.
-  `~/.config/battbar-dev`), so a dev build never touches the release settings (hash key,
-  links, hidden devices). Related: dev and release use the same HID++ software ID; until
-  this is separated, DEVELOPMENT.md warns not to run both at the same time.
+- ~~Development builds use their own configuration directory~~ — done in 0.2.0
+  (`~/.config/battbar-dev`). Still open: dev and release use the same HID++ software
+  ID; DEVELOPMENT.md warns not to run both at the same time.
 
-- **0.2.0: battery chemistry and non-rechargeable batteries** (requirements; not
+- **0.2.0: battery chemistry and non-rechargeable batteries** — implemented in 0.2.0
+  as listed, except item 7 (HID++ 1.0: "help wanted" issue first). Alkaline/NiMH
+  curves are per cell, from published datasheets, always `approximate`, marked
+  experimental. The 0x1004 "rechargeable" bit is used only for alert wording. (Original
+  requirements; not
   implemented in 0.1.0, which only guards: 0x1001 below ~3.3 V → "not reported", no
   alerts):
   1. 0x1004 capabilities: before treating any bit as "rechargeable", confirm the parsing
@@ -401,6 +404,12 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - Commit at the end of every stage and before large refactorings.
 
 ## Revision history
+
+- **2026-11-19** — 0.2.0: Launch at Login (asked once, status from SMAppService, never
+  re-enabled automatically, postponed under App Translocation, approval/not-found help,
+  cask removes the login item); chemistry (`chemistry`/`cells` in TOML, per-cell
+  alkaline/NiMH curves, Batteries menu, "replace the batteries" alerts); separate dev
+  configuration directory.
 
 - **2026-11-19** — before publishing: identifiers stored in the settings use HMAC-SHA256
   with a random per-installation key (`salt`, settings file mode 0600; never in `dump`);

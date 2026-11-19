@@ -277,6 +277,13 @@ fn pseudonymize(path: &PathBuf, unit_ids: &[String]) -> std::io::Result<()> {
     std::fs::write(path, text)
 }
 
+/// Merge reports and estimate replaceable-cell levels (same steps as the app).
+fn merged(reports: Vec<DeviceReport>, settings: &Settings, db: &DeviceDb) -> Vec<Device> {
+    let mut d = merge(reports, &settings.merge_config());
+    battbar_core::cells::apply_chemistry(&mut d, db, |id| settings.chemistry_for(id));
+    d
+}
+
 /// `battbar dump` content. Built from diagnostics and merged devices only: the
 /// settings (hash key, device IDs, links) are deliberately not an input.
 fn dump_report(bt: bool, db_sources: &[String], diags: Vec<(&'static str, serde_json::Value)>, devices: &[Device]) -> serde_json::Value {
@@ -318,6 +325,10 @@ fn os_version() -> String {
 fn main() {
     let cli = Cli::parse();
     let db = db();
+    #[cfg(target_os = "macos")]
+    if battbar_macos::bundle::is_dev_build() {
+        battbar_core::settings::use_dev_profile();
+    }
     let settings = Settings::load_and_init();
     match &cli.cmd {
         Cmd::Probe { json, replay, timeout } => {
@@ -330,7 +341,7 @@ fn main() {
             };
             let mut engine = Engine::new(provs);
             let res = engine.poll(Duration::from_secs(*timeout));
-            let devices = merge(res.reports, &settings.merge_config());
+            let devices = merged(res.reports, &settings, &db);
             if *json {
                 let out = json!({"battbar": env!("CARGO_PKG_VERSION"), "devices": devices, "timed_out": res.timed_out});
                 println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -367,7 +378,7 @@ fn main() {
             let mut engine = Engine::new(providers(&cli, &db, bt, None));
             let diags = engine.diagnostics(Duration::from_secs(30));
             let res = engine.poll(Duration::from_secs(10));
-            let devices = merge(res.reports, &settings.merge_config());
+            let devices = merged(res.reports, &settings, &db);
             let mut report = dump_report(bt, &db.sources, diags, &devices);
             redact(&mut report);
             let text = serde_json::to_string_pretty(&report).unwrap();
@@ -415,7 +426,7 @@ fn main() {
                         }
                     }
                 }
-                let devices = merge(res.reports, &settings.merge_config());
+                let devices = merged(res.reports, &settings, &db);
                 for d in &devices {
                     w.lock()
                         .unwrap()

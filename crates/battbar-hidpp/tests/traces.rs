@@ -246,9 +246,25 @@ fn voltage_below_li_ion_range_is_not_reported_never_zero() {
     assert_eq!(m.reading.percent, None, "never 0 %");
     assert_eq!(m.reading.voltage_mv, Some(2900));
     assert_eq!(m.reading.note, Some(ReadingNote::NonRechargeableBattery));
-    let d = merge(r.clone(), &MergeConfig::default());
+    let mut d = merge(r.clone(), &MergeConfig::default());
     assert_eq!(d[0].reading.note, Some(ReadingNote::NonRechargeableBattery));
     assert_eq!(d[0].reading.percent, None);
+    // 0.2.0: estimated from the default alkaline curve, 2 cells × 1.45 V, experimental.
+    let db = DeviceDb::embedded().unwrap();
+    battbar_core::cells::apply_chemistry(&mut d, &db, |_| None);
+    assert_eq!(d[0].reading.percent, Some(85));
+    assert_eq!(d[0].reading.precision, Precision::Approximate);
+    assert_eq!(d[0].reading.battery.unwrap().rechargeable, Some(false));
+    assert_eq!(d[0].reading.battery.unwrap().chemistry, Some(Chemistry::Alkaline));
+    assert_eq!(d[0].reading.battery.unwrap().cells, Some(2));
+}
+
+#[test]
+fn unified_battery_rechargeable_flag_hypothesis() {
+    // G502 X PLUS: capabilities byte1 = 0x0f -> bit0 set (rechargeable, hypothesis).
+    let r = poll(&[USB]);
+    let mouse = r.iter().find(|r| r.kind == DeviceKind::Mouse).unwrap();
+    assert_eq!(mouse.reading.battery.and_then(|b| b.rechargeable), Some(true));
 }
 
 /// Synthetic: a HID++ 1.0 device behind a receiver is listed as "not reported" without
