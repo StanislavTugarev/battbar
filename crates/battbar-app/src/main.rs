@@ -1126,6 +1126,8 @@ fn main() {
     }
     if battbar_macos::bundle::is_dev_build() {
         battbar_core::settings::use_dev_profile();
+        // Do not take the release app's HID++ replies (and vice versa).
+        battbar_hidpp::protocol::use_development_software_id();
     }
     let mtm = MainThreadMarker::new().expect("main thread");
     let app = NSApplication::sharedApplication(mtm);

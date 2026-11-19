@@ -6,33 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Fixed
-
-- Classic Bluetooth headsets (e.g. Arctis Nova Pro on Bluetooth without the base
-  station) showed "Battery not reported" in the app while `battbar probe` showed the
-  value: macOS's IOBluetooth gives a process the battery values only during its first
-  seconds, then 0. The app now reads them on every poll in a short-lived helper process
-  (the bundled `battbar` CLI).
-- G915 on Bluetooth always showed 100 %: its BLE Battery Service does not follow the
-  charge (still 100 % while G HUB shows 91 %). The device database now flags it, so the
-  value comes from the keyboard's voltage as on the receiver; voltage calibration no
-  longer learns from it, and calibration learned from it in 0.3.0 is dropped.
-- A SteelSeries headset with a learned Bluetooth link could disappear on Bluetooth
-  (base station unplugged): its device ID depended on which connections were present,
-  so a hidden ID from an earlier state could hide it. Linked and manually merged
-  devices now keep one ID. Devices hidden under the old IDs may need to be hidden
-  again.
-
-## [0.3.0] - 2026-11-19
+## [0.3.0] - 2026-11-20
 
 ### Added
 
 - Voltage calibration per device: a keyboard or mouse that reports only its voltage
-  on the receiver (e.g. G915) but its own percentage on Bluetooth no longer jumps
-  between the two (100 % on Bluetooth, 91 % on the receiver). While both are
-  available, battbar learns which voltage the device firmware calls which percentage
-  and uses that on the receiver. Shown under the device's **Voltage Calibration** menu,
-  with Reset.
+  on the receiver but a reliable percentage of its own on Bluetooth no longer jumps
+  between the two. While both are available, battbar learns which voltage the device
+  firmware calls which percentage and uses that on the receiver. Shown under the
+  device's **Voltage Calibration** menu, with Reset. Devices whose Bluetooth
+  percentage is known to be wrong (G915, see Fixed) are never calibrated from it.
 - Optional update check, **off by default**: Settings → *Check for Updates* (also
   offered once on first start). When on, battbar asks GitHub once a day for the latest
   release — the only network request battbar makes; it sends no device data or
@@ -43,9 +26,28 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Development builds use their own HID++ software ID, so they can run next to an
+  installed release without mixing up replies over Bluetooth.
 - Privacy statement: battbar is no longer "no network access" but "no telemetry, one
   opt-in request" (the update check above); a test fails if any other code uses the
   network.
+
+### Fixed
+
+- Classic Bluetooth headsets (e.g. Arctis Nova Pro on Bluetooth without the base
+  station) showed "Battery not reported" in the app while `battbar probe` showed the
+  value: macOS's IOBluetooth gives a process the battery values only during its first
+  seconds, then 0. The app now reads them on every poll in a short-lived helper process
+  (the bundled `battbar` CLI).
+- G915 on Bluetooth always showed 100 %: its BLE Battery Service does not follow the
+  charge (still 100 % while G HUB shows 91 %). The device database now flags it, so the
+  value comes from the keyboard's voltage as on the receiver; voltage calibration no
+  longer learns from it (samples learned by 0.3.0-rc.1 are dropped).
+- A SteelSeries headset with a learned Bluetooth link could disappear on Bluetooth
+  (base station unplugged): its device ID depended on which connections were present,
+  so a hidden ID from an earlier state could hide it. Linked and manually merged
+  devices now keep one ID. Devices hidden under the old IDs may need to be hidden
+  again.
 
 ## [0.2.0] - 2026-11-19
 

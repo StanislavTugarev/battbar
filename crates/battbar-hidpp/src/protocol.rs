@@ -10,6 +10,7 @@
 //! Error layout follows Solaar (GPL-2.0-or-later).
 
 use battbar_core::transport::{FrameTransport, TransportError};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
 pub const REPORT_SHORT: u8 = 0x10;
@@ -17,8 +18,25 @@ pub const REPORT_LONG: u8 = 0x11;
 pub const SHORT_LEN: usize = 7;
 pub const LONG_LEN: usize = 20;
 pub const RECEIVER_INDEX: u8 = 0xFF;
-/// Our software ID (low nibble of the function byte). Non-zero; 0 marks notifications.
+/// Our software ID (low nibble of the function byte) in release builds. Non-zero; 0
+/// marks notifications. Recorded traces use it, so they replay in tests.
 pub const SW_ID: u8 = 0x0B;
+/// Software ID of development builds. Over Bluetooth, GATT notifications reach every
+/// process that subscribed, so a development app running next to the release app would
+/// otherwise take the other's replies (seen: a garbled name and a wrong value).
+pub const DEV_SW_ID: u8 = 0x0A;
+static PROCESS_SW_ID: AtomicU8 = AtomicU8::new(SW_ID);
+
+/// Software ID new channels of this process use.
+pub fn software_id() -> u8 {
+    PROCESS_SW_ID.load(Ordering::Relaxed)
+}
+
+/// Development builds: use [`DEV_SW_ID`] for channels opened from now on. Not for
+/// recording or replaying traces (they use [`SW_ID`]).
+pub fn use_development_software_id() {
+    PROCESS_SW_ID.store(DEV_SW_ID, Ordering::Relaxed);
+}
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1500);
 const MAX_NOTIFICATIONS: usize = 64;
 
@@ -55,6 +73,8 @@ pub struct Channel<T: FrameTransport> {
     /// Diagnostics (`battbar dump`, `battbar record`): HID++ 1.0 SET_REGISTER requests
     /// (sub-IDs 0x80 short, 0x82 long) are refused before anything is sent.
     pub read_only: bool,
+    /// Software ID in our HID++ 2.0 requests; replies with another one are foreign.
+    pub sw_id: u8,
 }
 
 /// HID++ 1.0 SET_REGISTER sub-IDs (short, long).
@@ -69,6 +89,7 @@ impl<T: FrameTransport> Channel<T> {
             notifications: vec![],
             foreign_replies: 0,
             read_only: false,
+            sw_id: software_id(),
         }
     }
 
@@ -142,7 +163,7 @@ impl<T: FrameTransport> Channel<T> {
 
     /// HID++ 2.0 function call.
     pub fn call(&mut self, idx: u8, feature_index: u8, function: u8, params: &[u8]) -> Result<Vec<u8>, HidppError> {
-        self.request(idx, feature_index, (function << 4) | SW_ID, params)
+        self.request(idx, feature_index, (function << 4) | self.sw_id, params)
     }
 
     /// IRoot.ping → protocol version (major, minor).
@@ -265,6 +286,22 @@ mod tests {
         // Reads are allowed.
         let _ = c.read_short_register(RECEIVER_INDEX, 0x00, [0, 0, 0]);
         assert_eq!(c.transport.written.len(), 1);
+    }
+
+    #[test]
+    fn development_and_release_ids_ignore_each_others_replies() {
+        // The release app (0x0B) asked the same thing; its reply arrives first.
+        let mut c = script(vec![vec![
+            vec![0x11, 0x02, 0x00, 0x1B, 0x04, 0x02, 0xAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            vec![0x11, 0x02, 0x00, 0x1A, 0x04, 0x05, 0xAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ]]);
+        c.sw_id = DEV_SW_ID;
+        assert_eq!(c.ping(2).unwrap(), (4, 5));
+        assert_eq!(c.foreign_replies, 1);
+        assert_eq!(c.transport.written[0][3], 0x1A);
+        assert_ne!(DEV_SW_ID, SW_ID);
+        assert_ne!(DEV_SW_ID, 0);
+        assert_eq!(software_id(), SW_ID, "release ID unless a development build opts in");
     }
 
     #[test]

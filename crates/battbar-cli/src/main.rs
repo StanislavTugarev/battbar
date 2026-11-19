@@ -357,6 +357,12 @@ fn main() {
     #[cfg(target_os = "macos")]
     if battbar_macos::bundle::is_dev_build() {
         battbar_core::settings::use_dev_profile();
+        // Own HID++ software ID next to a running release app; traces keep the release
+        // ID so they replay in tests.
+        let traces = matches!(&cli.cmd, Cmd::Record { .. } | Cmd::Probe { replay: Some(_), .. });
+        if !traces {
+            battbar_hidpp::protocol::use_development_software_id();
+        }
     }
     let settings = Settings::load_and_init();
     match &cli.cmd {

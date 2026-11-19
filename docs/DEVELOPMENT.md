@@ -2,10 +2,12 @@
 
 ## Building and testing
 
-> **Do not run a development build and an installed release at the same time.** Both
-> use the same HID++ software ID, so replies from receivers and devices can be consumed
-> by the wrong process (wrong or missing values in both). Quit one before starting the
-> other. Settings are separate since 0.2.0: development builds (bundle ID
+> **A development build and an installed release can run at the same time** (since
+> 0.3.0): development builds use their own HID++ software ID (`0x0A`, release `0x0B`),
+> so neither takes the other's replies — over Bluetooth, GATT notifications reach both
+> processes, and with one shared ID that showed as a garbled device name and a wrong
+> value. `battbar record` and `probe --replay` keep the release ID so traces replay in
+> tests. Settings are separate since 0.2.0: development builds (bundle ID
 > `io.github.battbar.dev`, or any debug build) use `~/.config/battbar-dev/`, releases
 > `~/.config/battbar/`.
 
@@ -29,10 +31,6 @@ Start the app through `open` (LaunchServices), not by running
 TCC, has no Bluetooth usage description, and macOS kills the app
 (`__TCC_CRASHING_DUE_TO_PRIVACY_VIOLATION__`, SIGABRT). The CLI re-launches itself to
 avoid this; the app does not.
-
-Do not run the development app while the release app is running: both use the same
-HID++ software ID, so over Bluetooth (GATT notifications reach both processes) each can
-take the other's replies — seen as a garbled device name and a wrong "coarse" value.
 
 `battbar debug-bt` (hidden) has two IOBluetooth diagnostics:
 `BATTBAR_DEBUG_RUNLOOP=0` (run loop sources and battery values over the first 3 s of a

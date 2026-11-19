@@ -206,7 +206,9 @@ protocol requires no Rust changes.
   settling are never used for calibration.
 - Short (0x10) and long (0x11) reports on USB.
 - Own non-zero software ID in the low nibble of the function byte; filter replies by it.
-  Never open devices exclusively.
+  Release `0x0B`; development builds `0x0A`, so a development app next to the release
+  app never takes its replies (traces are recorded and replayed with `0x0B`). Never
+  open devices exclusively.
 - HID++ "device unavailable" → `asleep` / `disconnected`, **never 0 %**. Error codes
   are mapped per request (0x09 means different things for a ping and a register read).
 - Subscribe to 0x1004 battery notifications where supported.
@@ -453,8 +455,8 @@ See [`DISCOVERY.md`](DISCOVERY.md).
     privacy description.
 
 - ~~Development builds use their own configuration directory~~ — done in 0.2.0
-  (`~/.config/battbar-dev`). Still open: dev and release use the same HID++ software
-  ID; DEVELOPMENT.md warns not to run both at the same time.
+  (`~/.config/battbar-dev`); own HID++ software ID for development builds — done in
+  0.3.0.
 
 - **0.2.0: battery chemistry and non-rechargeable batteries** — implemented in 0.2.0
   as listed, except item 7 (HID++ 1.0: "help wanted" issue first). Alkaline/NiMH
@@ -486,6 +488,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Revision history
 
+- **2026-11-20** — 0.3.0-rc.2: G915 BLE Battery Service flagged unreliable (database
+  flag, never calibrated from); device IDs of linked/merged devices from the whole
+  group; classic Bluetooth battery read in a helper process (IOBluetooth gives a
+  process the values only in its first seconds); development builds use HID++
+  software ID `0x0A`.
 - **2026-11-19** — 0.3.0: per-unit voltage calibration for 0x1001 devices
   from simultaneous Bluetooth firmware percentages (moved from the backlog); opt-in
   daily update check (the only network request; replaces "no network requests");
