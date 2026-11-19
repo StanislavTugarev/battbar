@@ -1,6 +1,8 @@
 name: Release
 
-# Push a tag vX.Y.Z (matching the version in Cargo.toml and a CHANGELOG section).
+# Push a tag vX.Y.Z (release) or vX.Y.Z-rc.N (pre-release). X.Y.Z must match the
+# version in Cargo.toml. Releases need a CHANGELOG section for X.Y.Z; pre-releases use
+# it if present, are marked as pre-release on GitHub and do not update the Homebrew tap.
 on:
   push:
     tags: ["v*"]
@@ -23,10 +25,19 @@ jobs:
       - name: Version, tag and changelog agree
         id: version
         run: |
-          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          test "v$VERSION" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != Cargo version $VERSION"; exit 1; }
-          scripts/changelog-section.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          scripts/release-version.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          eval "$(scripts/release-version.sh "$GITHUB_REF_NAME")"
+          if scripts/changelog-section.sh "$VERSION" > "$RUNNER_TEMP/notes.md" 2>/dev/null; then
+            :
+          elif [ "$PRERELEASE" = true ]; then
+            printf 'Pre-release of battbar %s. Not yet described in CHANGELOG.md.\n' "$VERSION" > "$RUNNER_TEMP/notes.md"
+          else
+            echo "CHANGELOG.md has no section for [$VERSION]" >&2
+            exit 1
+          fi
+          if [ "$PRERELEASE" = true ]; then
+            printf '\n> Pre-release for testing; not published to the Homebrew tap.\n' >> "$RUNNER_TEMP/notes.md"
+          fi
 
       - name: Tests
         run: cargo test --workspace
@@ -59,7 +70,7 @@ jobs:
 
       - name: Package
         run: |
-          V=${{ steps.version.outputs.version }}
+          V=${{ steps.version.outputs.RELEASE_VERSION }}
           mkdir -p dist
           ditto -c -k --keepParent target/battbar.app "dist/battbar-$V.zip"
           (cd dist && shasum -a 256 "battbar-$V.zip" > SHA256SUMS)
@@ -68,13 +79,18 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "battbar ${{ steps.version.outputs.version }}" --notes-file "$RUNNER_TEMP/notes.md"
+          PRERELEASE: ${{ steps.version.outputs.PRERELEASE }}
+        run: |
+          FLAGS=""
+          if [ "$PRERELEASE" = true ]; then FLAGS="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" dist/* $FLAGS \
+            --title "battbar ${{ steps.version.outputs.RELEASE_VERSION }}" --notes-file "$RUNNER_TEMP/notes.md"
 
-      - name: Update Homebrew tap
+      - name: Update Homebrew tap (releases only)
+        if: steps.version.outputs.PRERELEASE == 'false'
         env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        if: env.HOMEBREW_TAP_TOKEN != ''
-        run: scripts/update-cask.sh "${{ steps.version.outputs.version }}" "$(cut -d' ' -f1 dist/SHA256SUMS)"
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: scripts/update-cask.sh "${{ steps.version.outputs.VERSION }}" "$(cut -d' ' -f1 dist/SHA256SUMS)"
 
       - name: Remove signing keychain
         if: always()

@@ -17,6 +17,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the privacy check below scans every commit
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -31,6 +33,8 @@ jobs:
         run: cargo xtask supported-devices --check
       - name: No certificates or keys in the repository
         run: scripts/check-no-secrets.sh
+      - name: Whole history - no signing material, traces pseudonymized
+        run: python3 scripts/check-history.py
 
   licenses:
     name: dependency licenses (cargo deny)

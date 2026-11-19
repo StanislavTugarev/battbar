@@ -19,6 +19,9 @@ pub struct LearnedLink {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// Per-installation key for the keyed hashes of identifiers (hex). Generated on first
+    /// start; never leaves this file (not part of `battbar dump` or traces).
+    pub salt: String,
     pub poll_interval_secs: u64,
     /// Low battery notification threshold in percent; `None` = off.
     pub low_battery_threshold: Option<u8>,
@@ -43,6 +46,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
+            salt: String::new(),
             poll_interval_secs: 60,
             low_battery_threshold: Some(15),
             notify_spare_full: false,
@@ -71,7 +75,28 @@ impl Settings {
             .unwrap_or_default()
     }
 
-    /// Atomic write (temp file + rename).
+    /// Load the settings and install the per-installation hash key. On the first start
+    /// (or with settings from before keyed hashes) a key is generated and IDs stored
+    /// under the old scheme are dropped, since they cannot be mapped to the new one.
+    pub fn load_and_init() -> Self {
+        let mut s = Self::load();
+        if !crate::ids::set_install_salt(&s.salt) {
+            s.salt = crate::ids::new_salt();
+            s.hidden.clear();
+            s.shown.clear();
+            s.ever_reported.clear();
+            s.learned_links.clear();
+            s.identity_memory.clear();
+            s.merge = MergeConfig::default();
+            crate::ids::set_install_salt(&s.salt);
+            if let Err(e) = s.save() {
+                eprintln!("battbar: saving settings: {e}");
+            }
+        }
+        s
+    }
+
+    /// Atomic write (temp file + rename), readable by the owner only.
     pub fn save(&self) -> std::io::Result<()> {
         let Some(p) = Self::path() else { return Ok(()) };
         if let Some(dir) = p.parent() {
@@ -80,6 +105,11 @@ impl Settings {
         let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
         let tmp = p.with_extension("toml.tmp");
         std::fs::write(&tmp, text)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+        }
         std::fs::rename(tmp, p)
     }
 

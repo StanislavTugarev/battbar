@@ -218,7 +218,7 @@ impl BatteryProvider for BtSystemProvider {
         for d in battbar_macos::classic::paired_devices().into_iter().filter(|d| d.is_classic()) {
             out.push(classic_report(&ClassicInput {
                 name: d.name.clone(),
-                address_hash: short_hash(&d.address),
+                address_hash: keyed_hash("bt-address", &d.address),
                 connected: d.connected,
                 class_of_device: d.class_of_device,
                 single: d.battery_single,
@@ -249,12 +249,12 @@ impl BatteryProvider for BtSystemProvider {
                     let percent = match percent {
                         Ok(v) => v.first().map(|b| (*b).min(100)),
                         Err(e) => {
-                            self.errors.push(format!("ble {}: {e}", short_hash(&p.id)));
+                            self.errors.push(format!("ble {}: {e}", keyed_hash("ble", &p.id)));
                             None
                         }
                     };
                     covered.push(name.clone());
-                    out.push(ble_report(&short_hash(&p.id), &name, kind, percent, "BLE Battery Service"));
+                    out.push(ble_report(&keyed_hash("ble", &p.id), &name, kind, percent, "BLE Battery Service"));
                 }
             }
             Err(e) => self.errors.push(format!("CoreBluetooth: {e}")),
@@ -275,7 +275,7 @@ impl BatteryProvider for BtSystemProvider {
         let mut now: Vec<String> = battbar_macos::classic::paired_devices()
             .into_iter()
             .filter(|d| d.connected)
-            .map(|d| short_hash(&d.address))
+            .map(|d| keyed_hash("bt-address", &d.address))
             .collect();
         if let Ok(c) = battbar_macos::ble::Central::shared() {
             if let Ok(ps) = c.connected_peripherals(&["180F"]) {

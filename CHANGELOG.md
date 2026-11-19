@@ -29,6 +29,9 @@ All notable changes to this project are documented here. The format follows
 - `battbar` command line: `probe`, `dump`, `record`, `probe --replay`.
 - Device database in `devices/*.toml` with user overrides in
   `~/.config/battbar/devices/`.
+- Privacy: identifiers in the settings are keyed hashes (HMAC-SHA256 with a random
+  per-installation key); `battbar dump` never includes the settings; `battbar record`
+  replaces every HID++ unit ID found in the recorded frames with a pseudonym.
 
-[Unreleased]: https://github.com/OWNER/battbar/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/battbar/releases/tag/v0.1.0
+[Unreleased]: https://github.com/StanislavTugarev/battbar/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/StanislavTugarev/battbar/releases/tag/v0.1.0

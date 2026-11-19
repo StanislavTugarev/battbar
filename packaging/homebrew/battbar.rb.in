@@ -19,8 +19,9 @@ cask "battbar" do
   zap trash: "~/.config/battbar"
 
   caveats <<~EOS
-    battbar is signed with a self-signed certificate, not notarized by Apple.
-    If macOS refuses to open it the first time, open
-    System Settings > Privacy & Security and click "Open Anyway" for battbar.
+    battbar is signed with its own certificate but not notarized by Apple.
+    The first start is blocked once ("battbar" Not Opened): click Done, then open
+    System Settings > Privacy & Security, click "Open Anyway" next to battbar,
+    confirm, and open battbar again.
   EOS
 end

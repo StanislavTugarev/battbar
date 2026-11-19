@@ -21,7 +21,7 @@ use std::time::Duration;
 use worker::{PollUpdate, WorkerCmd};
 
 const URL_BLUETOOTH_PRIVACY: &str = "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth";
-const URL_NOTIFICATIONS: &str = "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=io.github.battbar";
+
 const THRESHOLDS: [Option<u8>; 5] = [None, Some(10), Some(15), Some(20), Some(25)];
 const INTERVALS: [u64; 4] = [30, 60, 120, 300];
 
@@ -362,7 +362,14 @@ impl App {
                 return None;
             }
             Action::OpenNotificationSettings => {
-                open_url(URL_NOTIFICATIONS);
+                // Release and development builds have different bundle IDs.
+                let id = objc2_foundation::NSBundle::mainBundle()
+                    .bundleIdentifier()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "io.github.battbar".into());
+                open_url(&format!(
+                    "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id={id}"
+                ));
                 return None;
             }
             Action::ToggleLaunchAtLogin => {
@@ -706,7 +713,7 @@ fn main() {
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
-    let settings = Settings::load();
+    let settings = Settings::load_and_init();
     let settings_identity = settings.identity_memory.clone();
     let tx = worker::spawn(&settings, |u| {
         dispatch2::DispatchQueue::main().exec_async(move || deliver(u, 5));

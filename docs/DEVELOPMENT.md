@@ -65,40 +65,48 @@ signing and notarization can later replace the "Import signing certificate" and
 Signing material is never committed: `.gitignore` excludes `*.p12`, `*.cer`, `*.key`,
 `*.pem` and keychains, and CI runs `scripts/check-no-secrets.sh`.
 
+## Secrets (repository StanislavTugarev/battbar → Settings → Secrets → Actions)
+
+| Secret | Content | Format |
+|---|---|---|
+| `BATTBAR_RELEASE_P12_BASE64` | "battbar Release" certificate + private key (`battbar-release.p12`) | **base64** of the .p12 file, one line |
+| `BATTBAR_RELEASE_P12_PASSWORD` | password of that .p12 | as is (no trailing newline needed) |
+| `HOMEBREW_TAP_DEPLOY_KEY` | private half of an SSH deploy key with **write** access to `StanislavTugarev/homebrew-battbar` only | as is: the whole OpenSSH private key file, including the BEGIN/END lines |
+
+The tap is updated over SSH with that deploy key (no personal access token); the
+public half is registered as a deploy key on the tap repository only, so the key cannot
+touch anything else.
+
+```
+# release certificate (once)
+scripts/create-release-cert.sh ~/battbar-release-signing
+base64 -i ~/battbar-release-signing/battbar-release.p12 | gh secret set BATTBAR_RELEASE_P12_BASE64 --repo StanislavTugarev/battbar
+gh secret set BATTBAR_RELEASE_P12_PASSWORD --repo StanislavTugarev/battbar < ~/battbar-release-signing/battbar-release.p12.password
+
+# tap deploy key (once)
+ssh-keygen -t ed25519 -N "" -C "battbar release -> homebrew-battbar" -f ~/battbar-release-signing/tap-deploy-key
+gh repo deploy-key add ~/battbar-release-signing/tap-deploy-key.pub --repo StanislavTugarev/homebrew-battbar --allow-write --title "battbar release workflow"
+gh secret set HOMEBREW_TAP_DEPLOY_KEY --repo StanislavTugarev/battbar < ~/battbar-release-signing/tap-deploy-key
+```
+
+Back up `~/battbar-release-signing/` offline, then delete it from the machine.
+
 ## Making a release
 
-1. Move the `[Unreleased]` entries in `CHANGELOG.md` to a new `## [X.Y.Z] - date`
-   section and set `version = "X.Y.Z"` in the workspace `Cargo.toml`.
-2. Commit, tag `vX.Y.Z`, push the tag. The workflow checks tag = version = changelog
-   section, runs the tests, builds universal binaries, signs, zips, writes
-   `SHA256SUMS`, publishes the GitHub release and updates the Homebrew tap
-   (`OWNER/homebrew-battbar`, needs the `HOMEBREW_TAP_TOKEN` secret).
+Tags: `vX.Y.Z` for releases, `vX.Y.Z-rc.N` for pre-releases. `X.Y.Z` must equal
+`version` in the workspace `Cargo.toml` (checked by `scripts/release-version.sh`).
 
-## Installing binaries: never copy over an existing file
+- **Pre-release** (`v0.1.0-rc.1`): GitHub release marked *pre-release*, assets
+  `battbar-0.1.0-rc.1.zip` + `SHA256SUMS`; notes from the `[0.1.0]` CHANGELOG section if
+  it exists; the Homebrew tap is **not** updated.
+- **Release** (`v0.1.0`): requires a `## [0.1.0] - date` section in `CHANGELOG.md`;
+  the tap's `Casks/battbar.rb` is updated with the new version and checksum.
 
-macOS caches a binary's code signature by inode. Overwriting a signed executable in
-place (`cp new old`) keeps the inode but changes the contents; the next launch is
-killed with **SIGKILL (exit code 137)**. Always:
+Steps:
 
-```
-rm -f dest && cp src dest          # or
-cp src dest.tmp && mv -f dest.tmp dest
-```
-
-All scripts in `scripts/` follow this rule. `ditto`/`cp -R` of a whole `.app` into a
-fresh directory is fine.
-
-## Bluetooth from the CLI
-
-A process started from a terminal is attributed to the terminal app by TCC, which has
-no Bluetooth usage description, so the first Bluetooth call would kill it. The CLI
-embeds its own Info.plist and re-launches itself as its own *responsible process*
-(`posix_spawn` + `responsibility_spawnattrs_setdisclaim`) before touching Bluetooth.
-macOS then asks for permission for `battbar` itself.
-
-## Recording traces
-
-`battbar record --out traces/<name>.jsonl --note "reference values"` records only
-vendor interfaces (HID++ incl. GATT, base stations). Unit IDs are replaced with stable
-pseudonyms unless `--keep-ids` is given. Bluetooth system values (IOBluetooth,
-Battery Service) are not frame-based and are not part of traces.
+1. Move the `[Unreleased]` entries in `CHANGELOG.md` to `## [X.Y.Z] - date` and set
+   `version = "X.Y.Z"` in the workspace `Cargo.toml`.
+2. Commit, then tag and push the tag (`git tag vX.Y.Z-rc.1 && git push origin vX.Y.Z-rc.1`).
+   The workflow checks the version, runs the tests, builds universal binaries, signs
+   them, zips, writes `SHA256SUMS` and publishes the release.
+3. After testing the pre-release, tag `vX.Y.Z` the same way.

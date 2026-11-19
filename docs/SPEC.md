@@ -377,6 +377,12 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Revision history
 
+- **2026-11-19** — before publishing: identifiers stored in the settings use HMAC-SHA256
+  with a random per-installation key (`salt`, settings file mode 0600; never in `dump`);
+  development bundles use bundle ID `io.github.battbar.dev`; pre-release tags
+  `vX.Y.Z-rc.N`; Homebrew tap updated via an SSH deploy key; CI checks every commit
+  for signing material and non-pseudonymized unit IDs in traces (frame-level parsing).
+
 - **2026-11-19** — Charging: values approximate while charging and for ~10 min after;
   no low-battery alerts then; alert hysteresis threshold + 10 %; calibration excludes
   the settling period.

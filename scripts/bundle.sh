@@ -15,11 +15,18 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+# Release bundles (CI) and development bundles use different bundle IDs, so their
+# macOS permission records (signed by "battbar Release" vs "battbar Development") never
+# collide on the same Mac.
 if [ -n "${BATTBAR_BIN_DIR:-}" ]; then
   BIN="$BATTBAR_BIN_DIR"
+  BUNDLE_ID=io.github.battbar
+  BUNDLE_NAME=battbar
 else
   cargo build -p battbar-app -p battbar-cli
   BIN=target/debug
+  BUNDLE_ID=io.github.battbar.dev
+  BUNDLE_NAME="battbar Dev"
 fi
 
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
@@ -29,7 +36,7 @@ STAGE=$(mktemp -d target/battbar.app.XXXXXX)
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
 cp "$BIN/battbar-app" "$STAGE/Contents/MacOS/battbar-app"
 cp "$BIN/battbar" "$STAGE/Contents/MacOS/battbar"
-sed "s/@VERSION@/$VERSION/g" crates/battbar-app/Info.plist > "$STAGE/Contents/Info.plist"
+sed -e "s/@VERSION@/$VERSION/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" -e "s/@BUNDLE_NAME@/$BUNDLE_NAME/g" crates/battbar-app/Info.plist > "$STAGE/Contents/Info.plist"
 cp LICENSE NOTICE "$STAGE/Contents/Resources/"
 
 IDENTITY="${BATTBAR_SIGN_IDENTITY:-battbar Development}"
@@ -46,12 +53,12 @@ else
 fi
 # Nested code first, then the bundle. A Developer ID / notarization step can replace
 # this block later (add --options runtime and --timestamp).
-codesign --force --sign "$SIGN" --identifier io.github.battbar.cli "$STAGE/Contents/MacOS/battbar"
-codesign --force --sign "$SIGN" --identifier io.github.battbar "$STAGE"
+codesign --force --sign "$SIGN" --identifier "$BUNDLE_ID.cli" "$STAGE/Contents/MacOS/battbar"
+codesign --force --sign "$SIGN" --identifier "$BUNDLE_ID" "$STAGE"
 codesign --verify --strict "$STAGE"
 
 rm -rf "$APP.old"
 if [ -d "$APP" ]; then mv "$APP" "$APP.old"; fi
 mv "$STAGE" "$APP"
 rm -rf "$APP.old"
-echo "Built $APP ($VERSION, signed with: $SIGN)"
+echo "Built $APP ($VERSION, $BUNDLE_ID, signed with: $SIGN)"

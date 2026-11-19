@@ -11,6 +11,7 @@ pub mod hid_links;
 pub mod protocol;
 pub mod provider;
 pub mod receiver;
+pub mod trace_ids;
 
 #[cfg(target_os = "macos")]
 pub use gatt::GattLinks;

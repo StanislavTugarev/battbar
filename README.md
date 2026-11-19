@@ -29,18 +29,27 @@ already knows. **battbar is not affiliated with or endorsed by Logitech or Steel
 **Homebrew**
 
 ```
-brew install --cask OWNER/battbar/battbar
+brew install --cask StanislavTugarev/battbar/battbar
 ```
 
 **Manually:** download `battbar-<version>.zip` from
-[Releases](https://github.com/OWNER/battbar/releases), check it against `SHA256SUMS`,
+[Releases](https://github.com/StanislavTugarev/battbar/releases), check it against `SHA256SUMS`,
 unzip and move `battbar.app` to `/Applications`.
 
-**First launch.** battbar is signed with its own certificate but not notarized by
-Apple, so macOS refuses to open it the first time. Open **System Settings → Privacy &
-Security**, scroll down and click **Open Anyway** next to battbar (or, from a terminal:
-`xattr -dr com.apple.quarantine /Applications/battbar.app`). Updates signed with the
-same certificate keep the permissions you granted.
+**First launch (Gatekeeper).** battbar is signed with its own certificate but not
+notarized by Apple, so on current macOS (15 Sequoia, 26 Tahoe) the first start is
+blocked once:
+
+1. Open battbar. macOS shows *"battbar" Not Opened* (Apple could not verify it is free
+   of malware). Click **Done** — not *Move to Trash*.
+2. Open **System Settings → Privacy & Security** and scroll down to **Security**. Next to
+   *"battbar" was blocked to protect your Mac* click **Open Anyway**, and confirm with
+   your password or Touch ID.
+3. Open battbar again and click **Open** in the dialog that follows.
+
+This is needed only once per installation; updates signed with the same certificate
+open normally and keep the permissions you granted. (Right-click → Open no longer
+bypasses Gatekeeper on these macOS versions.)
 
 The command line tool `battbar` is installed with the cask (it lives inside the app at
 `battbar.app/Contents/MacOS/battbar`).

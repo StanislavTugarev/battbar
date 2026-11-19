@@ -12,7 +12,7 @@
 use crate::protocol::{LONG_LEN, RECEIVER_INDEX, REPORT_LONG};
 use crate::provider::{BoxTransport, LinkCandidate, LinkRole, LinkSource};
 use battbar_core::transport::{FrameTransport, LinkInfo, TransportError};
-use battbar_core::{short_hash, DeviceDb, IdentityKey, Transport};
+use battbar_core::{keyed_hash, DeviceDb, IdentityKey, Transport};
 use battbar_macos::ble::{BleError, Central, Characteristic, GattSession};
 use std::time::Duration;
 
@@ -70,7 +70,7 @@ impl GattTransport {
             .map(|v| (u16::from_le_bytes([v[1], v[2]]), u16::from_le_bytes([v[3], v[4]])))
             .unwrap_or((0, 0));
         let info = LinkInfo {
-            link: format!("gatt:{}", short_hash(&p.id)),
+            link: format!("gatt:{}", keyed_hash("ble", &p.id)),
             kind: "gatt".into(),
             vendor_id: vid,
             product_id: pid,
@@ -123,14 +123,14 @@ impl LinkSource for GattLinks {
             .map(|p| {
                 let (s, c) = (service.clone(), characteristic.clone());
                 LinkCandidate {
-                    id: format!("gatt:{}", short_hash(&p.id)),
+                    id: format!("gatt:{}", keyed_hash("ble", &p.id)),
                     role: LinkRole::Direct {
                         transport: Transport::BluetoothLe,
                     },
                     long_only: true,
                     identity: vec![IdentityKey::Stable {
                         namespace: "ble".into(),
-                        value: short_hash(&p.id),
+                        value: keyed_hash("ble", &p.id),
                     }],
                     open: Box::new(move || GattTransport::open(central, &p, &s, &c).map(|t| Box::new(t) as BoxTransport)),
                 }

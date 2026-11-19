@@ -171,7 +171,7 @@ fn device_id(sources: &[DeviceReport]) -> String {
     ids.sort();
     match ids.first() {
         // Hashed so settings (hidden devices etc.) never hold raw unit IDs.
-        Some(IdentityKey::HidppUnit { unit_id }) => format!("hidpp:{}", short_hash(&format!("battbar-unit:{unit_id}"))),
+        Some(IdentityKey::HidppUnit { unit_id }) => format!("hidpp:{}", crate::ids::keyed_hash("unit", unit_id)),
         Some(IdentityKey::Stable { namespace, value }) => format!("{namespace}:{value}"),
         None => sources.iter().map(|s| s.full_key()).min().unwrap_or_default(),
     }
@@ -287,7 +287,7 @@ fn key_hash(k: &IdentityKey) -> String {
         IdentityKey::HidppUnit { unit_id } => format!("hidpp:{unit_id}"),
         IdentityKey::Stable { namespace, value } => format!("{namespace}:{value}"),
     };
-    short_hash(&format!("battbar-identity:{raw}"))
+    crate::ids::keyed_hash("identity", &raw)
 }
 
 impl IdentityMemory {

@@ -273,6 +273,34 @@ fn pseudonymize(path: &PathBuf, unit_ids: &[String]) -> std::io::Result<()> {
     std::fs::write(path, text)
 }
 
+/// `battbar dump` content. Built from diagnostics and merged devices only: the
+/// settings (hash key, device IDs, links) are deliberately not an input.
+fn dump_report(bt: bool, db_sources: &[String], diags: Vec<(&'static str, serde_json::Value)>, devices: &[Device]) -> serde_json::Value {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let db: Vec<String> = db_sources
+        .iter()
+        .map(|s| if !home.is_empty() { s.replace(&home, "~") } else { s.clone() })
+        .collect();
+    let devices: Vec<serde_json::Value> = devices
+        .iter()
+        .map(|d| {
+            json!({
+                "name": d.name, "kind": d.kind, "reading": d.reading, "components": d.components, "estimate": d.estimate,
+                "sources": d.sources.iter().map(|s| json!({"provider": s.provider, "source": s.source, "transport": s.transport, "reading": s.reading})).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    json!({
+        "battbar": env!("CARGO_PKG_VERSION"),
+        "os": {"macos": os_version(), "arch": std::env::consts::ARCH},
+        "device_database": db,
+        "bluetooth_enabled": bt,
+        "input_monitoring": battbar_hid::input_monitoring_status(),
+        "providers": diags.into_iter().map(|(n, v)| (n.to_string(), v)).collect::<serde_json::Map<_, _>>(),
+        "devices": devices,
+    })
+}
+
 fn os_version() -> String {
     std::process::Command::new("/usr/bin/sw_vers")
         .arg("-productVersion")
@@ -286,6 +314,7 @@ fn os_version() -> String {
 fn main() {
     let cli = Cli::parse();
     let db = db();
+    let settings = Settings::load_and_init();
     match &cli.cmd {
         Cmd::Probe { json, replay, timeout } => {
             let provs = match replay {
@@ -297,7 +326,7 @@ fn main() {
             };
             let mut engine = Engine::new(provs);
             let res = engine.poll(Duration::from_secs(*timeout));
-            let devices = merge(res.reports, &Settings::load().merge_config());
+            let devices = merge(res.reports, &settings.merge_config());
             if *json {
                 let out = json!({"battbar": env!("CARGO_PKG_VERSION"), "devices": devices, "timed_out": res.timed_out});
                 println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -334,24 +363,8 @@ fn main() {
             let mut engine = Engine::new(providers(&cli, &db, bt, None));
             let diags = engine.diagnostics(Duration::from_secs(30));
             let res = engine.poll(Duration::from_secs(10));
-            let devices: Vec<serde_json::Value> = merge(res.reports, &Settings::load().merge_config())
-                .iter()
-                .map(|d| {
-                    json!({
-                        "name": d.name, "kind": d.kind, "reading": d.reading, "components": d.components,
-                        "sources": d.sources.iter().map(|s| json!({"provider": s.provider, "source": s.source, "transport": s.transport, "reading": s.reading})).collect::<Vec<_>>(),
-                    })
-                })
-                .collect();
-            let mut report = json!({
-                "battbar": env!("CARGO_PKG_VERSION"),
-                "os": {"macos": os_version(), "arch": std::env::consts::ARCH},
-                "device_database": db.sources,
-                "bluetooth_enabled": bt,
-                "input_monitoring": battbar_hid::input_monitoring_status(),
-                "providers": diags.into_iter().map(|(n, v)| (n.to_string(), v)).collect::<serde_json::Map<_, _>>(),
-                "devices": devices,
-            });
+            let devices = merge(res.reports, &settings.merge_config());
+            let mut report = dump_report(bt, &db.sources, diags, &devices);
             redact(&mut report);
             let text = serde_json::to_string_pretty(&report).unwrap();
             match out {
@@ -398,7 +411,7 @@ fn main() {
                         }
                     }
                 }
-                let devices = merge(res.reports, &Settings::load().merge_config());
+                let devices = merge(res.reports, &settings.merge_config());
                 for d in &devices {
                     w.lock()
                         .unwrap()
@@ -409,12 +422,105 @@ fn main() {
             drop(engine);
             drop(w);
             if !keep_ids {
+                // Also every unit ID in the frames themselves (devices without battery
+                // reports answer 0x0003 too).
+                match Trace::from_file(out) {
+                    Ok(t) => {
+                        for u in battbar_hidpp::trace_ids::unit_ids_in_trace(&t) {
+                            let id: String = u.iter().map(|b| format!("{b:02x}")).collect();
+                            if !unit_ids.contains(&id) {
+                                unit_ids.push(id);
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("battbar: reading back the trace: {e}"),
+                }
                 if let Err(e) = pseudonymize(out, &unit_ids) {
-                    eprintln!("battbar: could not redact unit IDs: {e}");
+                    // Fail closed: never leave a trace with real unit IDs behind.
+                    let _ = std::fs::remove_file(out);
+                    eprintln!("battbar: could not redact unit IDs ({e}); trace removed");
+                    std::process::exit(1);
                 }
             }
             eprintln!("Recorded vendor-interface traffic to {}", out.display());
             std::process::exit(0);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report(provider: &str, key: &str, identity: Vec<IdentityKey>) -> DeviceReport {
+        DeviceReport {
+            provider: provider.into(),
+            source_key: key.into(),
+            source: "t".into(),
+            name: "Headset".into(),
+            kind: DeviceKind::Headset,
+            transport: Transport::BluetoothClassic,
+            identity,
+            hints: vec![],
+            reading: Reading::ok(80, Precision::Exact),
+            components: vec![],
+        }
+    }
+
+    /// The settings never reach `battbar dump`: no hash key, no device IDs, no links,
+    /// no home directory path.
+    #[test]
+    fn dump_contains_nothing_from_the_settings() {
+        let mut s = Settings {
+            salt: battbar_core::ids::new_salt(),
+            ..Settings::default()
+        };
+        battbar_core::ids::set_install_salt(&s.salt);
+        let bt = keyed_hash("bt-address", "AA-BB-CC-DD-EE-FF");
+        let reports = vec![
+            report(
+                "bt-system",
+                &format!("classic:{bt}"),
+                vec![IdentityKey::Stable {
+                    namespace: "bt".into(),
+                    value: bt.clone(),
+                }],
+            ),
+            report(
+                "hidpp",
+                "receiver:1",
+                vec![IdentityKey::HidppUnit {
+                    unit_id: "1a2b3c4d".into(),
+                }],
+            ),
+        ];
+        let devices = merge(reports, &s.merge_config());
+        s.hidden = devices.iter().map(|d| d.id.clone()).collect();
+        s.ever_reported = s.hidden.clone();
+        s.learned_links.push(LearnedLink {
+            base: "steelseries/base".into(),
+            bluetooth: format!("bt-system/classic:{bt}"),
+            name: "Headset".into(),
+        });
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/someone".into());
+        let db_sources = vec!["builtin:hidpp.toml".to_string(), format!("{home}/.config/battbar/devices/my.toml")];
+        let text = serde_json::to_string(&dump_report(true, &db_sources, vec![], &devices)).unwrap();
+        assert!(!text.contains(&s.salt), "hash key leaked");
+        assert!(!text.contains(&bt), "Bluetooth address hash leaked");
+        assert!(!text.contains("1a2b3c4d"), "unit ID leaked");
+        for id in &s.hidden {
+            assert!(!text.contains(id.as_str()), "device ID {id} leaked");
+        }
+        for word in [
+            "salt",
+            "learned_links",
+            "identity_memory",
+            "ever_reported",
+            "config.toml",
+            home.as_str(),
+        ] {
+            assert!(!text.contains(word), "{word} in dump");
+        }
+        assert!(text.contains("~/.config/battbar/devices/my.toml"));
     }
 }

@@ -215,6 +215,11 @@ fn repository_traces_contain_only_pseudonyms() {
         let text = std::fs::read_to_string(&f).unwrap();
         assert!(!mac(&text), "{name}: looks like it contains a Bluetooth address");
         assert!(!text.to_lowercase().contains("serial"), "{name}: mentions a serial number");
+        // Every unit ID in the frames (including devices without battery reports).
+        let t = trace(&name);
+        for u in battbar_hidpp::trace_ids::unit_ids_in_trace(&t) {
+            assert_eq!(&u[..2], &[0xbb, 0xa7], "{name}: unit ID {u:02x?} in the frames is not a pseudonym");
+        }
         for r in poll(&[&name]) {
             for id in &r.identity {
                 if let IdentityKey::HidppUnit { unit_id } = id {

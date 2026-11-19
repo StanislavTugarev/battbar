@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key>
-  <string>io.github.battbar</string>
+  <string>@BUNDLE_ID@</string>
   <key>CFBundleName</key>
-  <string>battbar</string>
+  <string>@BUNDLE_NAME@</string>
   <key>CFBundleDisplayName</key>
-  <string>battbar</string>
+  <string>@BUNDLE_NAME@</string>
   <key>CFBundleExecutable</key>
   <string>battbar-app</string>
   <key>CFBundlePackageType</key>
