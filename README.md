@@ -3,7 +3,8 @@
 Battery indicators in the macOS menu bar for wireless mice, keyboards and headsets —
 whether they are connected through a 2.4 GHz receiver or base station, or over
 Bluetooth. One icon with a percentage per device. Free and open source
-(GPL-3.0-or-later), no network access, no telemetry.
+(GPL-3.0-or-later), no telemetry. The only network request is an optional daily
+update check, off unless you turn it on.
 
 ![battbar in the menu bar: keyboard ~96 %, mouse 59 % charging, headset ~100 %](docs/images/menu-bar.png)
 
@@ -33,7 +34,7 @@ brew tap StanislavTugarev/battbar
 brew install --cask StanislavTugarev/battbar/battbar
 ```
 
-Updates come with `brew upgrade`; uninstall with
+Updating: see [Updating](#updating); uninstall with
 `brew uninstall --cask StanislavTugarev/battbar/battbar`.
 
 *Why the full name?* Since Homebrew 6, **Tap Trust** is on by default: Homebrew does not
@@ -74,6 +75,30 @@ bypasses Gatekeeper on these macOS versions.)
 The command line tool `battbar` is installed with the cask (it lives inside the app at
 `battbar.app/Contents/MacOS/battbar`).
 
+## Updating
+
+**Homebrew:**
+
+```
+brew upgrade --cask battbar
+```
+
+Homebrew quits battbar, replaces the app and opens it again; Launch at Login and the
+permissions you granted stay (updates are signed with the same certificate).
+
+**Disk image:** download the new `battbar-<version>.dmg` from
+[Releases](https://github.com/StanislavTugarev/battbar/releases), quit battbar (menu →
+*Quit battbar*), drag battbar onto Applications in the disk image window and choose
+**Replace**, then open it again. Settings and permissions stay.
+
+**Hearing about new versions.** Either watch the repository on GitHub (**Watch →
+Custom → Releases**), or turn on **Settings → Check for Updates** in the battbar menu
+(also offered once on first start). With it on, battbar asks GitHub once a day for the
+latest release (see [Privacy](#privacy) for exactly what is sent); when there is a newer
+one, the menu shows *Update available: vX.Y.Z* — with the `brew upgrade` command if
+battbar was installed with Homebrew, otherwise it opens the release page — and you get
+one notification per version. Pre-releases are ignored.
+
 ## Using it
 
 - Each device gets an icon by type with its battery. `~` means the value is coarse
@@ -82,9 +107,9 @@ The command line tool `battbar` is installed with the cask (it lives inside the 
 - Click an icon for details: connection, components (e.g. the spare battery in a base
   station), where the value comes from, and actions for that device — hide it, merge it
   with another entry, split it, or unlink a remembered Bluetooth connection.
-- **Settings** (in every menu): launch at login, update interval, low-battery alert
-  threshold (default 15 %, once per discharge), spare-battery alert, devices without a
-  battery value, `headsetcontrol` fallback. **Other Devices** lists hidden devices.
+- **Settings** (in every menu): launch at login, update check (off by default),
+  update interval, low-battery alert threshold (default 15 %, once per discharge),
+  spare-battery alert, devices without a battery value, `headsetcontrol` fallback. **Other Devices** lists hidden devices.
 - **Launch at Login.** On first start battbar asks once whether it should start at
   login (*Not Now* means it will not ask again; the switch stays in Settings). The
   switch always shows what macOS has registered — if you turn battbar off under
@@ -119,8 +144,16 @@ The command line tool `battbar` is installed with the cask (it lives inside the 
 - On Bluetooth no HID device is opened at all: Logitech devices are queried through
   their separate vendor GATT service, everything else through the battery value macOS
   already has.
-- No network access, no telemetry. Settings stay in `~/.config/battbar/`; device
-  identifiers in them are stored as hashes.
+- No telemetry. battbar makes **one** kind of network request, and only if you turn on
+  **Settings → Check for Updates** (off by default): at most once every 24 hours,
+  `GET https://api.github.com/repos/StanislavTugarev/battbar/releases/latest` with the
+  headers `User-Agent: battbar/<version>` and `Accept: application/vnd.github+json` —
+  no token, no cookies, no device data, no identifiers. GitHub sees your IP address and
+  that User-Agent. The request is made with the system `curl` (HTTPS only, no
+  redirects). Turn it off with the same switch; nothing is requested while it is off,
+  and tests check that no other code in battbar uses the network.
+- Settings stay in `~/.config/battbar/`; device identifiers in them are stored as
+  hashes.
 - `battbar dump` and `battbar record` (for bug reports) contain no serial numbers,
   Bluetooth addresses or keystrokes; unit IDs in traces are replaced with pseudonyms.
 

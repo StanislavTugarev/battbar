@@ -16,6 +16,8 @@ cask "battbar" do
 
   # Quit the app and remove its "Open at Login" item (registered with SMAppService;
   # System Events lists it by name). The app is not executed during uninstall.
+  # On `brew upgrade` Homebrew also runs `quit` (unless --no-quit) and reopens the app
+  # after replacing the bundle; `login_item` is skipped on upgrade, so the item stays.
   uninstall quit:       "io.github.battbar",
             login_item: "battbar"
 

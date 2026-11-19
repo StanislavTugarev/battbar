@@ -45,7 +45,9 @@ Keyboard and headset are the test devices for both transports. Measured details 
 - Porting protocol logic from HeadsetControl (GPL-3.0) and Solaar (GPL-2.0-or-later,
   compatible with GPL-3.0) is allowed, with attribution in `NOTICE` and file headers.
 - All code, UI, README, commits and issue templates are **in English**.
-- **No network requests and no telemetry.** Updates come via Homebrew / GitHub Releases.
+- **No telemetry. One opt-in network request** (0.3.0): the daily update check, off by
+  default (see "Privacy and security"). Updates themselves come via Homebrew / GitHub
+  Releases.
 - Name, icons and texts use no vendor trademarks or logos. Wording like
   "works with Logitech … devices" plus a "not affiliated" disclaimer.
 - macOS is the primary platform. Code should not close the door to Windows/Linux
@@ -298,6 +300,27 @@ reports its status for bug reports.
   paired-device information. The air is never scanned.
 - README has a section explaining why Input Monitoring and Bluetooth are needed and why
   the app cannot read keystrokes.
+- **Network: only the opt-in update check** (0.3.0), in `battbar-app/src/updates.rs`:
+  - Settings → "Check for Updates", **off by default**; offered (unchecked) in the
+    first-run dialog next to Launch at Login, or once on its own for installs that
+    answered that question before 0.3.0.
+  - When on: at most once per 24 h (1 h after a failure),
+    `GET https://api.github.com/repos/StanislavTugarev/battbar/releases/latest` via
+    `/usr/bin/curl -q` (no `~/.curlrc`), HTTPS only, no redirects, 20 s timeout, empty
+    environment. Headers: `Host`, `User-Agent: battbar/<version>`,
+    `Accept: application/vnd.github+json` — no token, cookies or identifiers. GitHub
+    sees the IP address and the User-Agent.
+  - Only `tag_name`, `prerelease` and `draft` are read; drafts, pre-releases and
+    non-`vX.Y.Z` tags are ignored; compared by semver with the running version. The
+    release page URL is built from the version, never taken from the response.
+  - Newer version → menu item "Update available: vX.Y.Z…": Homebrew install (a
+    `Caskroom/battbar` directory exists) → dialog with `brew upgrade --cask battbar`
+    (Copy Command / Release Notes); otherwise → open the release page (DMG). One
+    notification per version.
+  - Off → no request at all, and a result that arrives after turning it off is
+    dropped. Tests: no request while off (counting fetcher), once per day, notification
+    once per version; static test: no other code uses curl, URL loading APIs or
+    sockets, and no crate depends on an HTTP client.
 
 ## Stages
 
@@ -393,6 +416,16 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
+- **Automatic updates (Sparkle).** Download and install updates in the app instead of
+  only announcing them. Notes for when it is scheduled:
+  - the cask must then declare `auto_updates true` (so `brew upgrade` leaves the app to
+    Sparkle and `brew outdated` does not report it);
+  - a separate **EdDSA (ed25519) signing key** for the appcast, stored exactly like the
+    "battbar Release" certificate: only in GitHub secrets and an offline backup, never
+    in the repository, used only in CI;
+  - the appcast request replaces the GitHub API check and stays opt-in, with the same
+    privacy description.
+
 - ~~Development builds use their own configuration directory~~ — done in 0.2.0
   (`~/.config/battbar-dev`). Still open: dev and release use the same HID++ software
   ID; DEVELOPMENT.md warns not to run both at the same time.
@@ -427,8 +460,10 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Revision history
 
-- **2026-11-19** — Unreleased: per-unit voltage calibration for 0x1001 devices from
-  simultaneous Bluetooth firmware percentages (moved from the backlog).
+- **2026-11-19** — Unreleased (0.3.0): per-unit voltage calibration for 0x1001 devices
+  from simultaneous Bluetooth firmware percentages (moved from the backlog); opt-in
+  daily update check (the only network request; replaces "no network requests");
+  Sparkle added to the backlog.
 
 - **2026-11-19** — 0.2.0: Launch at Login (asked once, status from SMAppService, never
   re-enabled automatically, postponed under App Translocation, approval/not-found help,

@@ -14,6 +14,13 @@ All notable changes to this project are documented here. The format follows
   available, battbar learns which voltage the device firmware calls which percentage
   and uses that on the receiver. Shown under the device's **Voltage Calibration** menu,
   with Reset.
+- Optional update check, **off by default**: Settings → *Check for Updates* (also
+  offered once on first start). When on, battbar asks GitHub once a day for the latest
+  release — the only network request battbar makes; it sends no device data or
+  identifiers (README → Privacy lists exactly what is sent). A newer version shows
+  *Update available: vX.Y.Z* in the menu (the `brew upgrade` command for Homebrew
+  installs, otherwise the release page) and one notification per version.
+- README: *Updating* section for Homebrew and the disk image.
 
 ## [0.2.0] - 2026-11-19
 

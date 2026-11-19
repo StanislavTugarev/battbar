@@ -7,7 +7,8 @@ Thanks for helping! battbar is maintained by volunteers who do not own every dev
 ## Ground rules
 
 - Code, UI text, docs, commit messages and issues are in **English**.
-- **No network access and no telemetry** — ever.
+- **No telemetry** — ever. The only network access is the opt-in update check in
+  `crates/battbar-app/src/updates.rs`; a test fails if any other code uses the network.
 - **Privacy rules are hard requirements** (see "Privacy and security" in
   [docs/SPEC.md](docs/SPEC.md)): open only vendor-specific HID interfaces through
   `battbar-hid`, never a keyboard/mouse interface, never an `IOHIDDevice` on Bluetooth,

@@ -3,6 +3,7 @@
 
 mod alerts;
 mod ui;
+mod updates;
 mod worker;
 
 use alerts::{Alert, AlertTracker};
@@ -11,8 +12,9 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAlert, NSApplication, NSApplicationActivationPolicy, NSCellImagePosition, NSControlStateValueOff, NSControlStateValueOn, NSImage,
-    NSMenu, NSMenuDelegate, NSMenuItem, NSStatusBar, NSStatusItem, NSVariableStatusItemLength, NSWorkspace,
+    NSAlert, NSApplication, NSApplicationActivationPolicy, NSButton, NSCellImagePosition, NSControlStateValueOff, NSControlStateValueOn,
+    NSImage, NSMenu, NSMenuDelegate, NSMenuItem, NSPasteboard, NSPasteboardTypeString, NSStatusBar, NSStatusItem,
+    NSVariableStatusItemLength, NSWorkspace,
 };
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString, NSURL};
 use std::cell::RefCell;
@@ -47,6 +49,9 @@ enum Action {
     MoveToApplications,
     SetChemistry(String, Chemistry),
     ForgetCalibration(String),
+    ToggleUpdateCheck,
+    /// "Update available: vX.Y.Z" (version without the `v`).
+    ShowUpdate(String),
 }
 
 /// Work that must run after the app state borrow is released (modal UI, terminate).
@@ -60,6 +65,13 @@ enum Post {
     TranslocationNotice,
     /// Launch at Login needs approval or cannot find the app: explain, offer the pane.
     LoginItemHelp(login::Status),
+    /// First-run offer of the update check, for installs that already answered the
+    /// Launch at Login question (it is part of that question otherwise).
+    AskUpdateCheck,
+    /// Installed with Homebrew: show the upgrade command.
+    UpdateHelp(String),
+    /// Settings switch (runs outside the app borrow, like the first-run answer).
+    SetUpdateCheck(bool),
 }
 
 struct App {
@@ -85,6 +97,8 @@ struct App {
     menu_open: bool,
     dirty: bool,
     polled_once: bool,
+    /// An update check request is running.
+    update_in_flight: bool,
 }
 
 thread_local! {
@@ -165,6 +179,44 @@ fn reveal_original_location() {
         let url = NSURL::fileURLWithPath(&ns(&format!("{}/Downloads", h.to_string_lossy())));
         ws.openURL(&url);
     }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Accessory checkbox for the first-run questions (unchecked: the check is opt-in).
+fn update_checkbox(mtm: MainThreadMarker) -> Retained<NSButton> {
+    let b = unsafe {
+        NSButton::checkboxWithTitle_target_action(
+            &ns("Check for updates once a day (one request to GitHub, no device data)"),
+            None,
+            None,
+            mtm,
+        )
+    };
+    b.setState(NSControlStateValueOff);
+    b.sizeToFit();
+    b
+}
+
+/// Turn the update check on or off (first-run answer or the Settings switch).
+fn set_update_check(on: bool) {
+    with_app(|a| {
+        a.settings.asked_update_check = true;
+        a.settings.check_for_updates = on;
+        if on {
+            a.settings.next_update_check = None; // check right away
+        } else {
+            a.settings.available_update = None;
+        }
+        a.save();
+        a.maybe_check_updates();
+        a.dirty = true;
+    });
 }
 
 fn local_time() -> String {
@@ -318,11 +370,19 @@ fn run_post(p: Post) {
             ));
             alert.addButtonWithTitle(&ns("Launch at Login"));
             alert.addButtonWithTitle(&ns("Not Now"));
+            let offer_updates = with_app(|a| !a.settings.asked_update_check).unwrap_or(false);
+            let checkbox = offer_updates.then(|| update_checkbox(mtm));
+            if let Some(c) = &checkbox {
+                alert.setAccessoryView(Some(c));
+            }
             let yes = alert.runModal() == 1000;
             with_app(|a| {
                 a.settings.asked_launch_at_login = true; // "Not Now" = do not ask again
                 a.save();
             });
+            if let Some(c) = checkbox {
+                set_update_check(c.state() == NSControlStateValueOn);
+            }
             if yes {
                 if let Err(e) = login::set(true) {
                     run_post(Post::Message(format!("Could not turn on Launch at Login: {e}")));
@@ -379,6 +439,50 @@ fn run_post(p: Post) {
                 login::open_settings();
             }
         }
+        Post::SetUpdateCheck(on) => {
+            set_update_check(on);
+            with_app(|a| a.render());
+        }
+        Post::AskUpdateCheck => {
+            NSApplication::sharedApplication(mtm).activate();
+            let alert = NSAlert::new(mtm);
+            alert.setMessageText(&ns("Check for battbar updates?"));
+            alert.setInformativeText(&ns(
+                "Once a day battbar can ask GitHub whether a newer version exists. It is the only network request \
+                 battbar makes; it carries no device data or identifiers. You can change this later under Settings \
+                 in the battbar menu.",
+            ));
+            alert.addButtonWithTitle(&ns("Check Daily"));
+            alert.addButtonWithTitle(&ns("Not Now"));
+            set_update_check(alert.runModal() == 1000);
+            with_app(|a| a.render());
+        }
+        Post::UpdateHelp(v) => {
+            NSApplication::sharedApplication(mtm).activate();
+            let alert = NSAlert::new(mtm);
+            alert.setMessageText(&ns(&format!("battbar {v} is available")));
+            alert.setInformativeText(&ns(&format!(
+                "battbar was installed with Homebrew. To update, run in Terminal:\n\n{}\n\nHomebrew quits battbar, \
+                 replaces it and opens it again.",
+                updates::UPGRADE_COMMAND
+            )));
+            alert.addButtonWithTitle(&ns("Copy Command"));
+            alert.addButtonWithTitle(&ns("Release Notes"));
+            alert.addButtonWithTitle(&ns("Close"));
+            match alert.runModal() {
+                1000 => {
+                    let pb = NSPasteboard::generalPasteboard();
+                    pb.clearContents();
+                    pb.setString_forType(&ns(updates::UPGRADE_COMMAND), unsafe { NSPasteboardTypeString });
+                }
+                1001 => {
+                    if let Some(ver) = updates::Version::parse(&v) {
+                        open_url(&updates::release_page(&ver));
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -400,6 +504,53 @@ impl App {
             .check(&self.devices, self.settings.low_battery_threshold, self.settings.notify_spare_full)
         {
             notify::post(&a);
+        }
+    }
+
+    /// Start the opt-in update check if it is on and due. With the option off nothing
+    /// is requested (see `updates::tick`).
+    fn maybe_check_updates(&mut self) {
+        if !updates::tick(&mut self.settings, unix_now(), self.update_in_flight, || {}) {
+            return;
+        }
+        self.update_in_flight = true;
+        self.save();
+        std::thread::Builder::new()
+            .name("battbar-update-check".into())
+            .spawn(|| {
+                use updates::Fetch;
+                let r = updates::Curl.get(updates::LATEST_API).and_then(|body| updates::parse_latest(&body));
+                dispatch2::DispatchQueue::main().exec_async(move || {
+                    with_app(|a| a.on_update_check(r));
+                });
+            })
+            .map(|_| ())
+            .unwrap_or_else(|e| {
+                eprintln!("battbar: update check thread: {e}");
+                self.update_in_flight = false;
+            });
+    }
+
+    fn on_update_check(&mut self, r: Result<Option<updates::Version>, String>) {
+        self.update_in_flight = false;
+        let outcome = updates::finish(&mut self.settings, unix_now(), &updates::Version::current(), r);
+        self.save();
+        if std::env::var_os("BATTBAR_LOG").is_some() {
+            eprintln!("update check: {outcome:?}");
+        }
+        if let updates::Outcome::Available { version, notify: true } = &outcome {
+            if notify::authorized() {
+                notify::post(&Alert {
+                    id: format!("update-{version}"),
+                    title: format!("battbar {version} is available"),
+                    body: "Open the battbar menu to update.".into(),
+                });
+            }
+        }
+        if self.menu_open {
+            self.dirty = true;
+        } else {
+            self.render();
         }
     }
 
@@ -444,6 +595,7 @@ impl App {
             let _ = self.tx.send(WorkerCmd::RefreshIn(self.gate.settle + Duration::from_millis(500)));
         }
         self.check_alerts();
+        self.maybe_check_updates();
         self.last_update = Some(local_time());
         if std::env::var_os("BATTBAR_LOG").is_some() {
             eprintln!(
@@ -529,6 +681,19 @@ impl App {
                 return None;
             }
             Action::SetChemistry(id, chem) => self.settings.set_chemistry(&id, chem),
+            Action::ToggleUpdateCheck => {
+                let on = !self.settings.check_for_updates;
+                return Some(Post::SetUpdateCheck(on));
+            }
+            Action::ShowUpdate(v) => {
+                if updates::installed_with_homebrew() {
+                    return Some(Post::UpdateHelp(v));
+                }
+                if let Some(ver) = updates::Version::parse(&v) {
+                    open_url(&updates::release_page(&ver));
+                }
+                return None;
+            }
             Action::ForgetCalibration(id) => {
                 battbar_core::calibration::forget(&mut self.settings.voltage_calibration, &id);
             }
@@ -636,6 +801,7 @@ impl App {
         } else {
             self.launch_at_login_item(menu);
         }
+        self.add(menu, "Check for Updates", Some(Action::ToggleUpdateCheck), s.check_for_updates, "");
         let low = self.submenu(menu, "Low Battery Alert");
         for t in THRESHOLDS {
             let title = t.map(|v| format!("At {v}%")).unwrap_or_else(|| "Off".into());
@@ -818,6 +984,15 @@ impl App {
         if matches!(self.bt_authorization, 1 | 2) {
             self.add(&menu, "Bluetooth access needed…", Some(Action::OpenBluetoothSettings), false, "");
         }
+        if let Some(v) = updates::available(&self.settings, &updates::Version::current()) {
+            self.add(
+                &menu,
+                &format!("Update available: v{v}…"),
+                Some(Action::ShowUpdate(v.to_string())),
+                false,
+                "",
+            );
+        }
         self.separator(&menu);
         self.add(&menu, "Refresh", Some(Action::Refresh), false, "r");
         let s = self.submenu(&menu, "Settings");
@@ -984,6 +1159,7 @@ fn main() {
         menu_open: false,
         dirty: false,
         polled_once: false,
+        update_in_flight: false,
     };
     APP.with(|c| *c.borrow_mut() = Some(state));
     with_app(|a| a.render());
@@ -1015,7 +1191,11 @@ fn main() {
             true
         });
         if ask == Some(true) {
+            // Also offers the update check (checkbox, unchecked).
             run_post(Post::AskLaunchAtLogin);
+        } else if with_app(|a| !a.settings.asked_update_check) == Some(true) {
+            // Installs that answered the login question before 0.3.0.
+            run_post(Post::AskUpdateCheck);
         }
     });
     app.run();

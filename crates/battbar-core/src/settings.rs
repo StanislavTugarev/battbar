@@ -82,6 +82,16 @@ pub struct Settings {
     /// Per-device voltage → firmware percentage samples (HID++ 0x1001 devices that also
     /// report a percentage on Bluetooth). See `calibration`.
     pub voltage_calibration: Vec<crate::calibration::VoltageCalibration>,
+    /// Opt-in daily update check (the only network request; off by default).
+    pub check_for_updates: bool,
+    /// The first-run "check for updates?" offer was shown.
+    pub asked_update_check: bool,
+    /// Unix time of the next update check.
+    pub next_update_check: Option<u64>,
+    /// Newer released version found by the last check (e.g. "0.3.0").
+    pub available_update: Option<String>,
+    /// Version the user was already notified about (one notification per version).
+    pub update_notified: Option<String>,
 }
 
 impl Default for Settings {
@@ -103,6 +113,11 @@ impl Default for Settings {
             warned_translocation: false,
             chemistry: vec![],
             voltage_calibration: vec![],
+            check_for_updates: false,
+            asked_update_check: false,
+            next_update_check: None,
+            available_update: None,
+            update_notified: None,
         }
     }
 }
