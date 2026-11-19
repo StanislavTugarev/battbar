@@ -21,7 +21,7 @@ M705 Marathon  [Mouse]  n/r (HID++ 1.0)
 
 ## What we need (about 5 minutes)
 
-1. Install battbar (README → Install) and connect the device through its **Unifying
+1. Install battbar 0.2.0 or later (README → Install) and connect the device through its **Unifying
    receiver**. Wake it up (move the mouse / press a key).
 2. Write down the battery level that Logitech's software (Options+, Logitech Options or
    SetPoint) shows, or the LED state of the device.
@@ -41,11 +41,14 @@ its reference value in `--note`.
 ## What the files contain
 
 Only traffic with the receiver's vendor-specific HID++ interface and diagnostic
-information (product IDs, protocol versions, feature lists). No keystrokes, no serial
-numbers, no Bluetooth addresses; device unit IDs are replaced with pseudonyms. Both
-files are plain text — please have a look before uploading.
+information (product IDs, protocol versions, feature lists). For HID++ 1.0 devices
+both files include the answers of the two battery registers (0x07 battery status,
+0x0D battery charge). No keystrokes, no serial numbers, no Bluetooth addresses; device
+unit IDs are replaced with pseudonyms. Both files are plain text — please have a look
+before uploading.
 
-`battbar record` only *reads* from the device; recording is safe.
+`battbar dump` and `battbar record` only *read*: register writes (SET_REGISTER) are
+blocked in these commands, so nothing on your device or receiver is changed.
 
 ## Scope (for contributors)
 

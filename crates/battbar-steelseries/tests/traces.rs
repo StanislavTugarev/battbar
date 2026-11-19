@@ -12,7 +12,7 @@ fn poll(name: &str) -> Vec<DeviceReport> {
     let t = Trace::from_file(&p).unwrap();
     let db = Arc::new(DeviceDb::embedded().unwrap());
     let mut prov = SteelSeriesProvider::new(db.clone(), vec![Box::new(ReplayBases::new(&t, &db))]);
-    prov.headsetcontrol_fallback = false;
+    prov.set_headsetcontrol(false);
     prov.poll()
 }
 

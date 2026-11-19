@@ -27,14 +27,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- **Crash when changing "Use headsetcontrol for Other Headsets"** (0.1.0): rebuilding the
-  providers let a new thread enumerate HID devices while the run loop of the exiting
-  thread that had initialised hidapi was being torn down. hidapi now lives on a
-  dedicated thread for the whole process. Hardware regression test included.
+- Crash when switching "Use headsetcontrol for Other Headsets" (present in 0.1.0).
 
 ### Changed
 
 - Development builds keep their settings in `~/.config/battbar-dev/`.
+- hidapi runs on one long-lived service thread that services its run loop; settings
+  changes no longer rebuild provider threads.
+- `battbar dump` and `battbar record` never write to devices (HID++ 1.0 SET_REGISTER is
+  refused) and include the HID++ 1.0 battery registers 0x07 / 0x0D (read only).
 - Cask: quits battbar and removes its login item on uninstall; `zap` also removes the
   settings and the menu bar item positions.
 - "Show Bluetooth Devices Without Battery" is now "Show Devices Without Battery Value".

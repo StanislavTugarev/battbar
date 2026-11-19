@@ -47,6 +47,13 @@ enum Cmd {
     /// Step-by-step Bluetooth diagnostics (development).
     #[command(hide = true)]
     DebugBt,
+    /// Stress test (development): rebuild all providers N times and poll at once each
+    /// time, to catch objects bound to threads that exit. Read-only.
+    #[command(hide = true)]
+    DebugRebuild {
+        #[arg(default_value_t = 20)]
+        rounds: u32,
+    },
     /// Record the traffic with vendor interfaces (HID++ incl. Bluetooth GATT, base stations).
     Record {
         #[arg(long, value_name = "FILE")]
@@ -109,15 +116,25 @@ fn bluetooth_available(cli: &Cli) -> bool {
     false
 }
 
-fn providers(cli: &Cli, db: &Arc<DeviceDb>, bt: bool, trace: Option<Arc<Mutex<TraceWriter>>>) -> Vec<Box<dyn BatteryProvider>> {
+/// `diagnostic`: `dump` / `record` — the HID++ provider never writes registers.
+fn providers(
+    cli: &Cli,
+    db: &Arc<DeviceDb>,
+    bt: bool,
+    trace: Option<Arc<Mutex<TraceWriter>>>,
+    diagnostic: bool,
+) -> Vec<Box<dyn BatteryProvider>> {
     let mut hid_sources: Vec<Box<dyn battbar_hidpp::LinkSource>> = vec![Box::new(battbar_hidpp::HidapiLinks::default())];
     #[cfg(target_os = "macos")]
     if bt {
         hid_sources.push(Box::new(battbar_hidpp::GattLinks::default()));
     }
     let mut hidpp = battbar_hidpp::HidppProvider::new(db.clone(), hid_sources);
+    if diagnostic {
+        hidpp = hidpp.read_only();
+    }
     let mut ss = battbar_steelseries::SteelSeriesProvider::new(db.clone(), vec![Box::new(battbar_steelseries::HidapiBases)]);
-    ss.headsetcontrol_fallback = !cli.no_headsetcontrol;
+    ss.set_headsetcontrol(!cli.no_headsetcontrol);
     if let Some(w) = trace {
         hidpp = hidpp.with_trace(w.clone());
         ss = ss.with_trace(w);
@@ -137,7 +154,7 @@ fn replay_providers(path: &PathBuf, db: &Arc<DeviceDb>) -> Vec<Box<dyn BatteryPr
     });
     let mut ss =
         battbar_steelseries::SteelSeriesProvider::new(db.clone(), vec![Box::new(battbar_steelseries::ReplayBases::new(&trace, db))]);
-    ss.headsetcontrol_fallback = false;
+    ss.set_headsetcontrol(false);
     vec![
         Box::new(battbar_hidpp::HidppProvider::new(
             db.clone(),
@@ -336,7 +353,7 @@ fn main() {
                 Some(p) => replay_providers(p, &db),
                 None => {
                     let bt = bluetooth_available(&cli);
-                    providers(&cli, &db, bt, None)
+                    providers(&cli, &db, bt, None, false)
                 }
             };
             let mut engine = Engine::new(provs);
@@ -351,6 +368,22 @@ fn main() {
                     eprintln!("(no answer in time from: {})", res.timed_out.join(", "));
                 }
             }
+            std::process::exit(0);
+        }
+        Cmd::DebugRebuild { rounds } => {
+            let bt = bluetooth_available(&cli);
+            let mut engine = Engine::new(providers(&cli, &db, bt, None, true));
+            for i in 0..*rounds {
+                let r = engine.poll(Duration::from_secs(15));
+                let mut by: std::collections::BTreeMap<&str, usize> = Default::default();
+                for rep in &r.reports {
+                    *by.entry(rep.provider.as_str()).or_default() += 1;
+                }
+                eprintln!("round {i}: {by:?} timed out: {:?}", r.timed_out);
+                // Drop every provider thread and poll at once with new ones.
+                engine = Engine::new(providers(&cli, &db, bt, None, true));
+            }
+            eprintln!("ok: {rounds} rebuilds, bluetooth={bt}");
             std::process::exit(0);
         }
         Cmd::DebugBt => {
@@ -375,7 +408,7 @@ fn main() {
         }
         Cmd::Dump { out } => {
             let bt = bluetooth_available(&cli);
-            let mut engine = Engine::new(providers(&cli, &db, bt, None));
+            let mut engine = Engine::new(providers(&cli, &db, bt, None, true));
             let diags = engine.diagnostics(Duration::from_secs(30));
             let res = engine.poll(Duration::from_secs(10));
             let devices = merged(res.reports, &settings, &db);
@@ -410,7 +443,7 @@ fn main() {
             for n in note {
                 w.lock().unwrap().note(n);
             }
-            let mut engine = Engine::new(providers(&cli, &db, bt, Some(w.clone())));
+            let mut engine = Engine::new(providers(&cli, &db, bt, Some(w.clone()), true));
             let mut unit_ids: Vec<String> = vec![];
             for i in 0..*polls {
                 if i > 0 {
@@ -434,6 +467,9 @@ fn main() {
                 }
                 print_devices(&devices);
             }
+            // Feature tables and HID++ 1.0 battery registers (read only) into the trace too.
+            let _ = engine.diagnostics(Duration::from_secs(30));
+            w.lock().unwrap().note("diagnostics captured (read only)");
             drop(engine);
             drop(w);
             if !keep_ids {

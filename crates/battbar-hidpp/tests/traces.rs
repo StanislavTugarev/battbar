@@ -281,3 +281,62 @@ fn hidpp10_device_is_listed_without_values() {
     assert_eq!(d.name, "AA MOUSE"); // codename from the receiver
     assert_eq!(d.source, "HID++ 1.0");
 }
+
+/// Diagnostics never write: with a recording transport (`battbar record`) the provider is
+/// read-only, so no HID++ 1.0 SET_REGISTER frame (sub-ID 0x80 / 0x82) is ever sent —
+/// not even the notification-flag write a normal poll would make here (flags are off in
+/// this trace) — while the HID++ 1.0 battery registers are read (GET_REGISTER 0x81).
+#[test]
+fn recording_is_read_only_and_reads_hidpp10_registers() {
+    use battbar_core::transport::{Dir, TraceLine, TraceWriter};
+    use std::io::Write;
+    #[derive(Clone)]
+    struct Buf(Arc<std::sync::Mutex<Vec<u8>>>);
+    impl Write for Buf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let buf = Buf(Arc::new(std::sync::Mutex::new(vec![])));
+    let db = Arc::new(DeviceDb::embedded().unwrap());
+    let t = trace("synthetic-receiver-hidpp10-device.jsonl");
+    let mut p =
+        HidppProvider::new(db.clone(), vec![Box::new(ReplaySource::new(&t, &db))]).with_trace(TraceWriter::new(Box::new(buf.clone())));
+    let reports = p.poll();
+    let diag = p.diagnostics();
+    assert_eq!(reports.len(), 1);
+
+    let text = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+    let recorded = Trace::parse(text.as_bytes()).unwrap();
+    let mut out = 0;
+    for l in &recorded.lines {
+        if let TraceLine::Frame { dir: Dir::Out, hex, .. } = l {
+            out += 1;
+            let f = battbar_core::transport::from_hex(hex).unwrap();
+            assert!(
+                !battbar_hidpp::protocol::SET_REGISTER_SUB_IDS.contains(&f[2]),
+                "register write recorded: {hex}"
+            );
+        }
+    }
+    assert!(out > 5, "nothing recorded");
+    let regs = &diag["links"][0]["devices"][0]["hidpp10_registers"];
+    assert_eq!(regs["0x07_battery_status"], "05 00 00", "{diag:#}");
+    assert_eq!(regs["0x0d_battery_charge"], "32 00 00");
+}
+
+#[test]
+fn normal_polling_still_enables_receiver_notifications() {
+    // Contrast: the app (not read-only) writes the flags when they are off.
+    let db = Arc::new(DeviceDb::embedded().unwrap());
+    let t = trace("synthetic-receiver-hidpp10-device.jsonl");
+    let mut transports = t.transports();
+    let tr = transports.pop().unwrap();
+    let mut ch = battbar_hidpp::protocol::Channel::new(tr, false);
+    assert_eq!(battbar_hidpp::receiver::ensure_notifications(&mut ch), Ok(true));
+    let _ = db;
+}

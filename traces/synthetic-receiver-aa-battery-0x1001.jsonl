@@ -1,5 +1,5 @@
 {"type":"note","text":"Synthetic: Lightspeed receiver, HID++ 2.0 mouse on AA cells, 0x1001 reports 2900 mV (not Li-ion)."}
-{"type":"header","battbar":"0.1.0","link":"hid:046d:c547:2:ff00","kind":"hidapi","vendor_id":1133,"product_id":50503,"product":"USB Receiver","bus":"usb","collections":[[65280,1],[65280,2]]}
+{"type":"header","battbar":"0.2.0","link":"hid:046d:c547:2:ff00","kind":"hidapi","vendor_id":1133,"product_id":50503,"product":"USB Receiver","bus":"usb","collections":[[65280,1],[65280,2]]}
 {"type":"frame","t_ms":0,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 81 00 00 00 00"}
 {"type":"frame","t_ms":3,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 81 00 00 09 00"}
 {"type":"frame","t_ms":6,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 20 00 00"}

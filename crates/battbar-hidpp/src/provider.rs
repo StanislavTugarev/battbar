@@ -53,6 +53,8 @@ pub struct HidppProvider {
     trace: Option<Arc<Mutex<TraceWriter>>>,
     errors: Vec<String>,
     checks: u64,
+    /// Diagnostic mode: no register writes at all (see `Channel::read_only`).
+    read_only: bool,
 }
 
 impl HidppProvider {
@@ -64,6 +66,7 @@ impl HidppProvider {
             trace: None,
             errors: vec![],
             checks: 0,
+            read_only: false,
         }
     }
 
@@ -86,8 +89,17 @@ impl HidppProvider {
     }
 
     /// Record every frame of every link opened from now on.
+    /// Record every frame of every link opened from now on. Recording is diagnostic,
+    /// so it also switches the provider to read-only.
     pub fn with_trace(mut self, trace: Arc<Mutex<TraceWriter>>) -> Self {
         self.trace = Some(trace);
+        self.read_only = true;
+        self
+    }
+
+    /// Diagnostic mode (`battbar dump`): never write to devices or receivers.
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
         self
     }
 
@@ -108,12 +120,14 @@ impl HidppProvider {
                         Some(w) => Box::new(RecordingTransport::new(t, w.clone())),
                         None => t,
                     };
+                    let mut ch = Channel::new(t, c.long_only);
+                    ch.read_only = self.read_only;
                     self.links.insert(
                         c.id,
                         OpenLink {
                             role: c.role,
                             identity: c.identity,
-                            ch: Channel::new(t, c.long_only),
+                            ch,
                             devices: BTreeMap::new(),
                             notifications_checked: false,
                             broken: false,
@@ -220,6 +234,18 @@ impl BatteryProvider for HidppProvider {
             for idx in indexes {
                 let ping = link.ch.ping(idx);
                 let mut d = json!({"index": idx, "ping": format!("{ping:?}")});
+                // HID++ 1.0 device: battery registers, read only (GET_REGISTER 0x81).
+                if matches!(ping, Err(HidppError::Hidpp10(err10::INVALID_SUBID))) || matches!(ping, Ok((maj, _)) if maj < 2) {
+                    let mut regs = serde_json::Map::new();
+                    for (name, reg) in [("0x07_battery_status", 0x07u8), ("0x0d_battery_charge", 0x0D)] {
+                        let v = match link.ch.read_short_register(idx, reg, [0, 0, 0]) {
+                            Ok(r) => transport::to_hex(&r[..r.len().min(3)]),
+                            Err(e) => format!("{e:?}"),
+                        };
+                        regs.insert(name.into(), json!(v));
+                    }
+                    d["hidpp10_registers"] = json!(regs);
+                }
                 if let Ok((maj, min)) = ping {
                     if maj >= 2 {
                         d["protocol"] = json!(format!("{maj}.{min}"));
@@ -313,6 +339,10 @@ impl HidppProvider {
 
     fn poll_receiver(&mut self, link_id: &str, def: &ReceiverDef, link: &mut OpenLink) -> Result<Vec<DeviceReport>, HidppError> {
         link.ch.drain()?;
+        // Enabling receiver notifications is a register write: skipped in read-only mode.
+        if !link.notifications_checked && link.ch.read_only {
+            link.notifications_checked = true;
+        }
         if !link.notifications_checked {
             match receiver::ensure_notifications(&mut link.ch) {
                 Ok(_) => link.notifications_checked = true,

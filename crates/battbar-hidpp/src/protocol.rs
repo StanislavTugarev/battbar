@@ -52,7 +52,13 @@ pub struct Channel<T: FrameTransport> {
     pub notifications: Vec<Vec<u8>>,
     /// Replies addressed to other software (G HUB, Options+): counted, then dropped.
     pub foreign_replies: u64,
+    /// Diagnostics (`battbar dump`, `battbar record`): HID++ 1.0 SET_REGISTER requests
+    /// (sub-IDs 0x80 short, 0x82 long) are refused before anything is sent.
+    pub read_only: bool,
 }
+
+/// HID++ 1.0 SET_REGISTER sub-IDs (short, long).
+pub const SET_REGISTER_SUB_IDS: [u8; 2] = [0x80, 0x82];
 
 impl<T: FrameTransport> Channel<T> {
     pub fn new(transport: T, long_only: bool) -> Self {
@@ -62,6 +68,7 @@ impl<T: FrameTransport> Channel<T> {
             timeout: DEFAULT_TIMEOUT,
             notifications: vec![],
             foreign_replies: 0,
+            read_only: false,
         }
     }
 
@@ -97,6 +104,11 @@ impl<T: FrameTransport> Channel<T> {
 
     /// Send one request and wait for the matching reply. Returns the parameter bytes.
     pub fn request(&mut self, idx: u8, b2: u8, b3: u8, params: &[u8]) -> Result<Vec<u8>, HidppError> {
+        if self.read_only && SET_REGISTER_SUB_IDS.contains(&b2) {
+            return Err(HidppError::Transport(TransportError::Refused(
+                "register write in read-only (diagnostic) mode".into(),
+            )));
+        }
         let long = self.long_only || params.len() > 3;
         let mut req = vec![if long { REPORT_LONG } else { REPORT_SHORT }, idx, b2, b3];
         req.extend_from_slice(params);
@@ -235,6 +247,24 @@ mod tests {
         ]);
         assert_eq!(c.ping(3), Err(HidppError::Hidpp10(err10::UNKNOWN_DEVICE)));
         assert_eq!(c.call(2, 0x06, 1, &[]), Err(HidppError::Hidpp20(0x05)));
+    }
+
+    #[test]
+    fn read_only_channel_never_sends_set_register() {
+        let mut c = script(vec![]);
+        c.read_only = true;
+        assert!(matches!(
+            c.write_short_register(RECEIVER_INDEX, 0x00, [0, 9, 0]),
+            Err(HidppError::Transport(TransportError::Refused(_)))
+        ));
+        assert!(matches!(
+            c.request(RECEIVER_INDEX, 0x82, 0xB2, &[0; 16]),
+            Err(HidppError::Transport(TransportError::Refused(_)))
+        ));
+        assert!(c.transport.written.is_empty(), "nothing may reach the device");
+        // Reads are allowed.
+        let _ = c.read_short_register(RECEIVER_INDEX, 0x00, [0, 0, 0]);
+        assert_eq!(c.transport.written.len(), 1);
     }
 
     #[test]

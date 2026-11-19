@@ -103,37 +103,96 @@ fn new_api() -> Result<HidApi, String> {
         .map_err(|e| e.to_string())
 }
 
-fn api() -> Result<&'static Mutex<HidApi>, TransportError> {
-    static API: OnceLock<Result<Mutex<HidApi>, String>> = OnceLock::new();
-    API.get_or_init(|| {
-        // On macOS hidapi schedules its IOHIDManager on the run loop of the thread that
-        // creates it (`IOHIDManagerScheduleWithRunLoop(…, CFRunLoopGetCurrent(), …)`), and
-        // every later enumeration schedules devices on that run loop. If that thread
-        // exits — the app rebuilds its provider threads when a setting changes — the
-        // run loop is freed and the next enumeration crashes in CFRunLoopAddSource.
-        // So the manager is created on a dedicated thread that lives for the whole process.
-        let (tx, rx) = std::sync::mpsc::channel();
-        let spawned = std::thread::Builder::new().name("battbar-hid-manager".into()).spawn(move || {
-            let _ = tx.send(new_api());
-            loop {
-                std::thread::park();
-            }
-        });
-        match spawned {
-            Ok(_) => rx
-                .recv()
-                .unwrap_or_else(|_| Err("HID manager thread failed".into()))
-                .map(Mutex::new),
-            Err(e) => Err(e.to_string()),
-        }
+// ------------------------------------------------------------------ HID service
+//
+// On macOS hidapi schedules its IOHIDManager on the run loop of the thread that creates
+// it (`IOHIDManagerScheduleWithRunLoop(…, CFRunLoopGetCurrent(), …)`), and every
+// enumeration schedules devices on that run loop. battbar 0.1.0 created it on a provider
+// thread; when that thread exited, new threads enumerating while its run loop was torn
+// down crashed in CFRunLoopAddSource.
+//
+// Rule (docs/DEVELOPMENT.md): system objects bound to a run loop live on long-lived
+// threads that run that loop. Here one service thread owns the HidApi for the whole
+// process: every hidapi call (enumerate, open) runs on it as a job, and between jobs it
+// services its run loop, so IOKit events queued on the manager are handled instead of
+// piling up.
+
+type Job = Box<dyn FnOnce(&mut Result<HidApi, String>) + Send>;
+
+struct Service {
+    tx: Mutex<std::sync::mpsc::Sender<Job>>,
+}
+
+static RUN_LOOP_TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// How often the service thread has serviced its run loop (tests / diagnostics).
+pub fn service_run_loop_ticks() -> u64 {
+    RUN_LOOP_TICKS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(target_os = "macos")]
+fn service_run_loop_once() {
+    use std::ffi::c_void;
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        static kCFRunLoopDefaultMode: *const c_void;
+        fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source_handled: u8) -> i32;
+    }
+    // Handle whatever is pending, without blocking.
+    unsafe { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0, 0) };
+}
+
+#[cfg(not(target_os = "macos"))]
+fn service_run_loop_once() {}
+
+fn service() -> &'static Service {
+    static SERVICE: OnceLock<Service> = OnceLock::new();
+    SERVICE.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Job>();
+        std::thread::Builder::new()
+            .name("battbar-hid-service".into())
+            .spawn(move || {
+                let mut api = new_api();
+                loop {
+                    match rx.recv_timeout(std::time::Duration::from_millis(20)) {
+                        Ok(job) => job(&mut api),
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                    }
+                    service_run_loop_once();
+                    RUN_LOOP_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            })
+            .expect("spawn HID service thread");
+        Service { tx: Mutex::new(tx) }
     })
-    .as_ref()
-    .map_err(|e| TransportError::Io(e.clone()))
+}
+
+/// Run `f` on the HID service thread and wait for its result.
+fn with_api<R: Send + 'static>(f: impl FnOnce(&mut HidApi) -> Result<R, TransportError> + Send + 'static) -> Result<R, TransportError> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let job: Job = Box::new(move |api| {
+        let r = match api {
+            Ok(a) => f(a),
+            Err(e) => Err(TransportError::Io(e.clone())),
+        };
+        let _ = tx.send(r);
+    });
+    service()
+        .tx
+        .lock()
+        .unwrap()
+        .send(job)
+        .map_err(|_| TransportError::Io("HID service stopped".into()))?;
+    rx.recv().map_err(|_| TransportError::Io("HID service stopped".into()))?
 }
 
 /// All HID devices, grouped per OS-level device. Nothing is opened.
 pub fn enumerate() -> Result<Vec<HidInterface>, TransportError> {
-    let mut a = api()?.lock().unwrap();
+    with_api(enumerate_on_service)
+}
+
+fn enumerate_on_service(a: &mut HidApi) -> Result<Vec<HidInterface>, TransportError> {
     a.refresh_devices().map_err(|e| TransportError::Io(e.to_string()))?;
     let mut by_path: BTreeMap<CString, HidInterface> = BTreeMap::new();
     for d in a.device_list() {
@@ -166,8 +225,8 @@ pub struct HidapiTransport {
 /// Opens a HID interface after the privacy guard approved it.
 pub fn open(i: &HidInterface) -> Result<HidapiTransport, TransportError> {
     check_openable(i).map_err(TransportError::Refused)?;
-    let a = api()?.lock().unwrap();
-    let dev = a.open_path(&i.path).map_err(|e| TransportError::Io(e.to_string()))?;
+    let path = i.path.clone();
+    let dev = with_api(move |a| a.open_path(&path).map_err(|e| TransportError::Io(e.to_string())))?;
     Ok(HidapiTransport {
         dev,
         info: i.link_info(),

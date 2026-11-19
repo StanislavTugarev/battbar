@@ -22,3 +22,13 @@ fn enumerate_after_the_initialising_thread_exited() {
         assert_eq!(again.is_ok(), n.is_ok());
     }
 }
+
+/// The HID service thread services its run loop (IOKit events on the manager are
+/// handled, not queued forever).
+#[test]
+fn service_thread_runs_its_run_loop() {
+    let _ = battbar_hid::enumerate();
+    let t0 = battbar_hid::service_run_loop_ticks();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(battbar_hid::service_run_loop_ticks() >= t0 + 3, "run loop not serviced");
+}

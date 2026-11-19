@@ -26,6 +26,41 @@ Release and universal (arm64 + x86_64) builds are made **only in CI**
 (`.github/workflows/release.yml`); locally `scripts/bundle.sh` builds a debug bundle
 for the host architecture.
 
+## Threads, run loops and queues (rule)
+
+**System objects bound to a run loop or a dispatch queue are created only on
+long-lived threads/queues that service them, and provider threads are never torn
+down while the app runs.**
+
+Background: battbar 0.1.0 crashed (EXC_BREAKPOINT in `CFRunLoopAddSource`) when the
+"headsetcontrol" switch rebuilt the providers. hidapi had created its `IOHIDManager` on
+a provider thread and scheduled it on that thread's run loop; new threads enumerated
+while the run loop of the exiting thread was being torn down. Reproduced on hardware by
+`crates/battbar-hidpp/tests/hardware_rebuild.rs` (`--ignored`; SIGSEGV without the fix).
+
+Audit (0.2.0):
+
+| Object | Bound to | Lifetime | Status |
+|---|---|---|---|
+| hidapi `IOHIDManager` (enumerate, open) | run loop of the **HID service thread** (`battbar-hid`) | whole process; every hidapi call runs on it as a job; it services its run loop (`CFRunLoopRunInMode`, every ≤ 20 ms) so IOKit events do not pile up | fixed in 0.2.0 (tests: `thread_lifetime.rs`) |
+| hidapi per-device read threads | their own run loops, created and stopped by hidapi (`hid_open_path` / `hid_close` unschedules before the thread ends) | per open device | hidapi-internal, correct |
+| `CBCentralManager` + delegate | a private serial **dispatch queue** owned by the static `Central` | whole process (not tied to the calling thread) | safe |
+| `GattSession` | std channels fed by the central's queue | per session | safe |
+| IOBluetooth (`pairedDevices`, properties) | nothing registered: no notifications, delegates or async calls | synchronous calls on the bt-system provider thread | safe; if notifications are ever added, register them on a long-lived thread that runs its run loop |
+| `NSStatusItem`, menus, `UNUserNotificationCenter`, `SMAppService` | main thread / main queue | whole process | safe |
+
+Paths that could recreate threads:
+
+- **Settings changes** — the app's engine is created once; settings act through shared
+  switches (headsetcontrol: `SteelSeriesProvider::headsetcontrol_switch`) or the worker
+  loop (interval). No provider thread exits while the app runs.
+- **Sleep / wake, hotplug** — no threads are recreated: links fail and are reopened
+  (HID devices are opened on the HID service thread; GATT sessions on the central's
+  queue).
+- **CLI** — one engine per process; `battbar debug-rebuild N` (hidden) rebuilds all
+  providers N times with Bluetooth as a stress test (25 rounds pass on the reference
+  hardware).
+
 ## Code signing and macOS permissions (TCC)
 
 macOS remembers privacy permissions (Bluetooth, notifications) per *code identity*.

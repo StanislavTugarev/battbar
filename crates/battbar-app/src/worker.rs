@@ -30,7 +30,10 @@ const EVENT_CHECK: Duration = Duration::from_secs(2);
 const FOLLOWUP: Duration = Duration::from_secs(3);
 const POLL_DEADLINE: Duration = Duration::from_secs(15);
 
-fn engine(db: &Arc<DeviceDb>, headsetcontrol: bool) -> Engine {
+/// Providers live on their engine threads for the whole run of the app: settings are
+/// applied through shared switches, never by rebuilding the engine, so no thread that may
+/// own system objects (run loops, queues) ever exits (docs/DEVELOPMENT.md).
+fn engine(db: &Arc<DeviceDb>, headsetcontrol: bool) -> (Engine, Arc<std::sync::atomic::AtomicBool>) {
     let hidpp = battbar_hidpp::HidppProvider::new(
         db.clone(),
         vec![
@@ -39,17 +42,19 @@ fn engine(db: &Arc<DeviceDb>, headsetcontrol: bool) -> Engine {
         ],
     );
     let mut ss = battbar_steelseries::SteelSeriesProvider::new(db.clone(), vec![Box::new(battbar_steelseries::HidapiBases)]);
-    ss.headsetcontrol_fallback = headsetcontrol;
-    Engine::new(vec![
+    ss.set_headsetcontrol(headsetcontrol);
+    let switch = ss.headsetcontrol_switch();
+    let engine = Engine::new(vec![
         Box::new(hidpp),
         Box::new(ss),
         Box::new(battbar_bt_system::BtSystemProvider::default()),
-    ])
+    ]);
+    (engine, switch)
 }
 
 pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'static) -> Sender<WorkerCmd> {
     let (tx, rx) = mpsc::channel();
-    let mut headsetcontrol = settings.headsetcontrol_fallback;
+    let headsetcontrol = settings.headsetcontrol_fallback;
     let mut interval = Duration::from_secs(settings.poll_interval_secs.max(10));
     std::thread::Builder::new()
         .name("battbar-worker".into())
@@ -58,7 +63,7 @@ pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'stati
                 DeviceDb::load_with_overrides(DeviceDb::user_dir().as_deref())
                     .unwrap_or_else(|_| DeviceDb::embedded().expect("built-in device database")),
             );
-            let mut engine = engine(&db, headsetcontrol);
+            let (mut engine, headsetcontrol_switch) = engine(&db, headsetcontrol);
             let mut learner = LinkLearner::default();
             let mut next_poll = Instant::now();
             let mut followup: Option<Instant> = None;
@@ -79,10 +84,7 @@ pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'stati
                         headsetcontrol: h,
                         interval: i,
                     }) => {
-                        if h != headsetcontrol {
-                            headsetcontrol = h;
-                            engine = engine_rebuild(&db, h);
-                        }
+                        headsetcontrol_switch.store(h, std::sync::atomic::Ordering::Relaxed);
                         interval = i.max(Duration::from_secs(10));
                         next_poll = Instant::now();
                     }
@@ -113,8 +115,4 @@ pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'stati
         })
         .expect("spawn worker");
     tx
-}
-
-fn engine_rebuild(db: &Arc<DeviceDb>, headsetcontrol: bool) -> Engine {
-    engine(db, headsetcontrol)
 }

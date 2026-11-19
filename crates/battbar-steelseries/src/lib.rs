@@ -108,7 +108,9 @@ pub struct SteelSeriesProvider {
     links: BTreeMap<String, Open>,
     trace: Option<Arc<Mutex<TraceWriter>>>,
     /// Use `headsetcontrol` for models without native support.
-    pub headsetcontrol_fallback: bool,
+    /// Use `headsetcontrol` for models without native support. Shared switch: the app
+    /// flips it at runtime instead of rebuilding the provider (and its thread).
+    headsetcontrol: Arc<std::sync::atomic::AtomicBool>,
     errors: Vec<String>,
     checks: u64,
 }
@@ -122,10 +124,19 @@ impl SteelSeriesProvider {
             sources,
             links: BTreeMap::new(),
             trace: None,
-            headsetcontrol_fallback: true,
+            headsetcontrol: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             errors: vec![],
             checks: 0,
         }
+    }
+
+    pub fn set_headsetcontrol(&mut self, on: bool) {
+        self.headsetcontrol.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Handle to switch the fallback while the provider runs on its worker thread.
+    pub fn headsetcontrol_switch(&self) -> Arc<std::sync::atomic::AtomicBool> {
+        self.headsetcontrol.clone()
     }
 
     pub fn with_trace(mut self, w: Arc<Mutex<TraceWriter>>) -> Self {
@@ -230,7 +241,7 @@ impl BatteryProvider for SteelSeriesProvider {
         for id in broken {
             self.links.remove(&id);
         }
-        if self.headsetcontrol_fallback {
+        if self.headsetcontrol.load(std::sync::atomic::Ordering::Relaxed) {
             if let Some(json) = headsetcontrol::run(Duration::from_secs(5)) {
                 let db = self.db.clone();
                 out.extend(headsetcontrol::parse(&json, |v, p| db.usb_device(v, p).is_some()));
