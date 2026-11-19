@@ -21,7 +21,10 @@ All notable changes to this project are documented here. The format follows
   Bluetooth audio, including left/right/case components.
 - One device across connections: receiver ↔ Bluetooth keyboards by HID++ unit ID,
   headsets on a base station and Bluetooth (remembered link, can be unlinked).
-- Low-battery notifications (default 15 %, once per discharge cycle), optional
+- Values while charging and for ~10 minutes after are shown as estimates (`~`), since
+  the charge voltage inflates firmware readings.
+- Low-battery notifications (default 15 %, once per discharge cycle, none while
+  charging or settling, 10 % hysteresis), optional
   spare-battery notification, launch at login, hide/merge/split devices.
 - `battbar` command line: `probe`, `dump`, `record`, `probe --replay`.
 - Device database in `devices/*.toml` with user overrides in

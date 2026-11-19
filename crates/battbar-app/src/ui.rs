@@ -79,6 +79,11 @@ pub fn component_name(k: ComponentKind) -> &'static str {
 /// Informational lines of a device menu (disabled items).
 pub fn detail_lines(d: &Device) -> Vec<String> {
     let mut v = vec![format!("Battery: {}", status_text(&d.reading))];
+    match d.estimate {
+        Some(Estimate::Charging) => v.push("Estimated while charging".into()),
+        Some(Estimate::Settling) => v.push("Estimated: settling after charging".into()),
+        None => {}
+    }
     if d.reading.charging == Some(true) {
         v.push("Charging".into());
     } else if d.reading.external_power == Some(true) {
@@ -155,6 +160,7 @@ mod tests {
             percent_source: None,
             components: vec![],
             sources: vec![],
+            estimate: None,
         }
     }
 

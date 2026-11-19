@@ -32,7 +32,8 @@ both are plain text.
 **Battery curves.** For devices that only report a voltage, a few recordings at
 different levels **on battery (cable unplugged)** help us build an accurate curve:
 e.g. at about 100 %, 50 % and 20 %, each with the vendor app's value in `--note`.
-Recordings while charging are not used for curves.
+Recordings while charging, or within about 10 minutes after unplugging (the voltage
+is still settling), are not used for curves.
 
 ## Part 2 — for contributors: add the device
 

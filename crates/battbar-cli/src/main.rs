@@ -179,7 +179,12 @@ fn print_devices(devs: &[Device]) {
         println!("No devices found.");
     }
     for d in devs {
-        println!("{}  [{:?}]  {}", d.name, d.kind, fmt_reading(&d.reading));
+        let note = match d.estimate {
+            Some(Estimate::Charging) => "  (estimated while charging)",
+            Some(Estimate::Settling) => "  (estimated, settling after charging)",
+            None => "",
+        };
+        println!("{}  [{:?}]  {}{note}", d.name, d.kind, fmt_reading(&d.reading));
         for c in &d.components {
             println!("    {:?}: {}", c.kind, fmt_reading(&c.reading));
         }

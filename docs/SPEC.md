@@ -190,8 +190,9 @@ protocol requires no Rust changes.
   **0x1004** (Unified Battery) → **0x1001** (Battery Voltage) → **0x1000**.
 - 0x1001: mV → % using the curve from the device database; without a curve for the
   model, a generic Li-ion default curve, `precision = approximate`.
-  **Curves are calibrated only from measurements on battery (no cable)**; readings
-  taken while charging are marked `charging` and never used for calibration.
+  **Curves are calibrated only from measurements on battery (no cable), outside the
+  ~10-minute settling period after charging**; readings taken while charging or
+  settling are never used for calibration.
 - Short (0x10) and long (0x11) reports on USB.
 - Own non-zero software ID in the low nibble of the function byte; filter replies by it.
   Never open devices exclusively.
@@ -227,6 +228,25 @@ protocol requires no Rust changes.
 - Paired but not connected → `disconnected`, no percentage.
 - Connected but no battery reported → shown in the menu as "battery not reported", no
   menu bar icon by default (configurable).
+
+### Battery values while charging
+
+Firmware estimates the charge from the cell voltage; while charging the terminal voltage
+is inflated by the charge current (V = OCV + I·R), which can read as tens of percent too
+much (8 % → 52 % in 15 s on the reference mouse, in the vendor app as well), and it
+relaxes for several minutes after unplugging.
+
+- While a device is charging, its percentage is shown with `precision = approximate`
+  (`~` and the charging mark) whatever the source; the menu says "Estimated while
+  charging".
+- For ~10 minutes after charging stops (voltage settling) the value stays
+  `approximate` ("Estimated: settling after charging"), then the source's precision is
+  shown again.
+- Low-battery notifications are not sent while charging or settling. A device gets a
+  new low-battery alert only after a measured (not estimated) value has risen above
+  threshold + 10 % and then fallen to the threshold again.
+- Voltage-curve calibration (0x1001) uses only measurements on battery outside the
+  settling period; readings while charging or settling are excluded.
 
 ### General
 
@@ -280,7 +300,8 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   headsetcontrol fallback toggle, show BT devices without battery, launch at login
   (SMAppService).
 - Poll every 60 s + push events where available.
-- macOS notification on low battery (default 15 %, once per discharge cycle).
+- macOS notification on low battery (default 15 %, once per discharge cycle; rules in
+  "Battery values while charging").
 - Missing Bluetooth permission: clear screen with a button opening the right System
   Settings pane (Input Monitoring is not needed, see "Privacy and security").
 - Menus: every device menu has the device's details and only actions on that device
@@ -355,6 +376,10 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - Commit at the end of every stage and before large refactorings.
 
 ## Revision history
+
+- **2026-11-19** — Charging: values approximate while charging and for ~10 min after;
+  no low-battery alerts then; alert hysteresis threshold + 10 %; calibration excludes
+  the settling period.
 
 - **2026-11-19** — Stage 2 review: never-reported disconnected Bluetooth devices hidden
   by default (Other Devices menu); global Settings separate from per-device actions;

@@ -2,6 +2,7 @@
 //! battbar core: data model, provider trait and polling engine, source merging,
 //! device database and the frame transport abstraction.
 
+pub mod charge;
 pub mod devicedb;
 pub mod learner;
 pub mod merge;
@@ -10,6 +11,7 @@ pub mod provider;
 pub mod settings;
 pub mod transport;
 
+pub use charge::{Estimate, SettlingTracker};
 pub use devicedb::DeviceDb;
 pub use learner::LinkLearner;
 pub use merge::{merge, Device, IdentityMemory, MergeConfig, NewDeviceGate};

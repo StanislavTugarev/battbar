@@ -34,6 +34,9 @@ pub struct Device {
     pub percent_source: Option<String>,
     pub components: Vec<Component>,
     pub sources: Vec<DeviceReport>,
+    /// Set when the percentage is only an estimate because of charging.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<crate::charge::Estimate>,
 }
 
 impl Device {
@@ -254,7 +257,7 @@ fn build_device(mut sources: Vec<DeviceReport>) -> Device {
         .map(|s| s.kind)
         .find(|k| *k != DeviceKind::Other)
         .unwrap_or(DeviceKind::Other);
-    Device {
+    let mut d = Device {
         id: device_id(&sources),
         name,
         kind,
@@ -262,7 +265,10 @@ fn build_device(mut sources: Vec<DeviceReport>) -> Device {
         percent_source,
         components,
         sources,
-    }
+        estimate: None,
+    };
+    crate::charge::mark_charging(&mut d);
+    d
 }
 
 /// Remembers which identity keys belong together (e.g. a BLE peripheral and a HID++
@@ -467,8 +473,10 @@ mod tests {
         assert_eq!(devs.len(), 1);
         let d = &devs[0];
         assert_eq!(d.reading.percent, Some(85));
-        assert_eq!(d.reading.precision, Precision::Exact);
         assert_eq!(d.reading.charging, Some(true));
+        // Charging (flag from the base): the percentage is shown as an estimate.
+        assert_eq!(d.reading.precision, Precision::Approximate);
+        assert_eq!(d.estimate, Some(crate::charge::Estimate::Charging));
         assert_eq!(d.percent_source.as_deref(), Some("bt-system/classic:1"));
         assert_eq!(d.name, "Arctis Nova Pro Wireless");
     }

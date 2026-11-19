@@ -63,6 +63,7 @@ struct App {
     alerts: AlertTracker,
     identities: IdentityMemory,
     gate: NewDeviceGate,
+    settling: SettlingTracker,
     /// Device IDs the new-device gate has admitted.
     admitted: Vec<String>,
     last_update: Option<String>,
@@ -254,6 +255,7 @@ fn run_post(p: Post) {
 impl App {
     fn recompute(&mut self) {
         self.devices = merge(self.reports.clone(), &self.settings.merge_config());
+        self.settling.apply(std::time::Instant::now(), &mut self.devices);
     }
 
     fn check_alerts(&mut self) {
@@ -721,6 +723,7 @@ fn main() {
         alerts: AlertTracker::default(),
         identities: IdentityMemory::from_stored(&settings_identity),
         gate: NewDeviceGate::default(),
+        settling: SettlingTracker::default(),
         admitted: vec![],
         last_update: None,
         timed_out: vec![],

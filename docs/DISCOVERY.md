@@ -343,3 +343,25 @@ again.
 | Learned headset ↔ Bluetooth link | Learned live: base flag 00 → 01 with exactly one matching Bluetooth device; with headset Bluetooth off afterwards it stays one device. |
 | Stable self-signed signature keeps Bluetooth permission across rebuilds | Yes: designated requirement `identifier "io.github.battbar" and certificate leaf = H"…"`. |
 | Keyboard hopping Lightspeed ↔ BLE | Event checks re-poll within seconds; one transient split (BLE Battery Service ready before the GATT HID++ link) fixed with a session identity memory. |
+
+## Battery values while charging (2026-11-19)
+
+Observation: plugging the mouse (G502 X PLUS) into its charger raised the reported
+level from 8 % to 52 % within 15 s — identically in G HUB. Not a battbar bug: the
+firmware estimates the state of charge from the cell voltage, and under charge the
+terminal voltage is raised by the charge current (V = OCV + I·R); on the flat part of
+the Li-ion curve that reads as tens of percent. After unplugging, the value relaxes back
+over several minutes.
+
+| Device | Battery feature | Reports charging? | Capture while charging |
+|---|---|---|---|
+| Mouse G502 X PLUS (Lightspeed) | **0x1004 Unified Battery v5**, state of charge in % | **Yes**: `charging_status = 1`, `external_power = 1` | `46 08 01 01` → 70 %, level "full", charging, external power |
+| Keyboard G915 (Lightspeed, BLE) | **0x1001 Battery Voltage v3** only (mV) | **Yes**: flags bit 7 = external power, bits 0–2 = charge status (`0x81` = cable, full) | 4200 mV, flags `0x81` |
+
+Both report charging, so the rule below applies to both; a device that reports only a
+voltage without charge flags would fall under the same rule as soon as any merged source
+reports charging.
+
+Rule (SPEC "Battery values while charging"): while charging, the percentage is shown as
+`approximate` whatever its source; for 10 minutes after charging stops as well
+(settling); no low-battery alerts in either phase; curve calibration ignores both.
