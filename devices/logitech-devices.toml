@@ -20,3 +20,11 @@ vendor_id = 0x046D
 wpid = [0x4099]
 usb_pid = [0xC095]
 notes = "Battery via 0x1004 (Unified Battery), exact percentage. Verified on Lightspeed."
+
+[[device]]
+name = "Pebble Keys 2 K380s"
+kind = "keyboard"
+protocol = "hidpp20"
+vendor_id = 0x046D
+ble_pid = [0xB377]
+notes = "2× AAA. Battery via 0x1004 (percentage from the firmware). Verified on Bluetooth LE."

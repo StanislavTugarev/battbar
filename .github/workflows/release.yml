@@ -67,6 +67,8 @@ jobs:
           BATTBAR_SIGN_IDENTITY: battbar Release
           BATTBAR_REQUIRE_IDENTITY: "1"
         run: scripts/bundle.sh
+      - name: Signed by the pinned release certificate
+        run: scripts/check-release-signature.sh target/battbar.app
 
       - name: Package
         run: |

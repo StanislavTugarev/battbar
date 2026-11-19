@@ -156,8 +156,19 @@ pub fn decode_unified(soc_supported: bool, r: &[u8]) -> Reading {
 
 /// 0x1001 getBatteryInfo: `[mV hi, mV lo, flags]`. flags bit 7 = external power;
 /// bits 0–2 = charge status (0 charging, 1 full, 2 not charging, 7 error).
+/// Below this a 0x1001 voltage cannot come from a Li-ion cell (empty ≈ 3.4–3.5 V):
+/// AA/AAA cells (1.2–1.6 V per cell). Non-rechargeable batteries are not supported yet.
+pub const NON_LI_ION_BELOW_MV: u16 = 3300;
+
 pub fn decode_voltage(r: &[u8], curve: Option<(&CurveDef, Precision)>) -> Reading {
     let mv = u16::from_be_bytes([r[0], r[1]]);
+    if mv > 0 && mv < NON_LI_ION_BELOW_MV {
+        // Never map this through a Li-ion curve (it would read as 0 %).
+        let mut reading = Reading::with_status(Status::NotReported);
+        reading.voltage_mv = Some(mv);
+        reading.note = Some(battbar_core::ReadingNote::NonRechargeableBattery);
+        return reading;
+    }
     let flags = r[2];
     let ext = flags & 0x80 != 0;
     let cs = flags & 0x07;

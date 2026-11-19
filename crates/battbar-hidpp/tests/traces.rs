@@ -232,3 +232,36 @@ fn repository_traces_contain_only_pseudonyms() {
         }
     }
 }
+
+/// Synthetic: a HID++ 2.0 device that only has 0x1001 and reports 2.9 V — far below
+/// any Li-ion level (AA/AAA cells). Must not be mapped to 0 %.
+#[test]
+fn voltage_below_li_ion_range_is_not_reported_never_zero() {
+    let r = poll(&["synthetic-receiver-aa-battery-0x1001.jsonl"]);
+    assert_eq!(r.len(), 1, "{r:#?}");
+    let m = &r[0];
+    assert_eq!(m.name, "AA MOUSE");
+    assert_eq!(m.kind, DeviceKind::Mouse);
+    assert_eq!(m.reading.status, Status::NotReported);
+    assert_eq!(m.reading.percent, None, "never 0 %");
+    assert_eq!(m.reading.voltage_mv, Some(2900));
+    assert_eq!(m.reading.note, Some(ReadingNote::NonRechargeableBattery));
+    let d = merge(r.clone(), &MergeConfig::default());
+    assert_eq!(d[0].reading.note, Some(ReadingNote::NonRechargeableBattery));
+    assert_eq!(d[0].reading.percent, None);
+}
+
+/// Synthetic: a HID++ 1.0 device behind a receiver is listed as "not reported" without
+/// garbage values, and does not break the poll.
+#[test]
+fn hidpp10_device_is_listed_without_values() {
+    let r = poll(&["synthetic-receiver-hidpp10-device.jsonl"]);
+    assert_eq!(r.len(), 1, "{r:#?}");
+    let d = &r[0];
+    assert_eq!(d.reading.status, Status::NotReported);
+    assert_eq!(d.reading.percent, None);
+    assert_eq!(d.reading.voltage_mv, None);
+    assert_eq!(d.reading.note, Some(ReadingNote::Hidpp10Device));
+    assert_eq!(d.name, "AA MOUSE"); // codename from the receiver
+    assert_eq!(d.source, "HID++ 1.0");
+}

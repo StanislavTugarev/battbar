@@ -365,3 +365,20 @@ reports charging.
 Rule (SPEC "Battery values while charging"): while charging, the percentage is shown as
 `approximate` whatever its source; for 10 minutes after charging stops as well
 (settling); no low-battery alerts in either phase; curve calibration ignores both.
+
+## Battery-powered device (2026-11-19)
+
+Logitech Pebble Keys 2 K380s (2× AAA), over Bluetooth LE (GATT HID++):
+
+| | |
+|---|---|
+| PID (BLE) | `B377`, HID++ 4.5, 30 features + root |
+| Battery | **0x1004 Unified Battery v3** — capabilities `0f 02` (levels 0b1111, flags `0x02`), status `64 08 00 00` = 100 %, level full, discharging |
+| Other sources | BLE Battery Service 100 %; `system_profiler` 100 % |
+| battbar 0.1.0 | 100 %, exact (no false 0 %) |
+| Features | 0000 0001 0003 0005 1D4B 0020 0007 0011 1004 1B04 1814 1815 40A3 4220 4521 4531 4540 00C3 1802 1807 1816 1805 1830 1891 18A1 1E00 1E02 1602 1EB0 1861 18B0 |
+
+Compared with the rechargeable G502 X PLUS (0x1004 v5, flags `0x0f`), bit 0 of the
+0x1004 capability flags is clear on this AAA device — a likely "rechargeable" flag for
+0.2.0. Voltage-only (0x1001) devices on AA cells are covered in 0.1.0 by a guard only
+(synthetic trace `traces/synthetic-receiver-aa-battery-0x1001.jsonl`).

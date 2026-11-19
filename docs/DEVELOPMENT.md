@@ -45,6 +45,19 @@ H"<sha1 of battbar Release>"`.
 > permissions again after the next update**, and the Homebrew cask cannot tell them why.
 > Keep two copies: the GitHub secrets and an offline backup.
 
+The certificate in use is pinned in `packaging/release-cert.sha1`
+(`0d2f4d28ca5966872d894e69112d789e2774976d`). The release workflow fails if a bundle is
+signed by any other certificate (`scripts/check-release-signature.sh`). Users can check
+a download themselves:
+
+```
+codesign -d -r- /Applications/battbar.app
+# designated => identifier "io.github.battbar" and certificate leaf = H"0d2f4d28ca5966872d894e69112d789e2774976d"
+```
+
+Replacing the certificate deliberately means updating that file in the same release
+and accepting that every user is asked for permissions again.
+
 Creating it (once, maintainer):
 
 ```
@@ -90,6 +103,15 @@ gh secret set HOMEBREW_TAP_DEPLOY_KEY --repo StanislavTugarev/battbar < ~/battba
 ```
 
 Back up `~/battbar-release-signing/` offline, then delete it from the machine.
+
+## CI runners
+
+CI checks and the release workflow run on **`macos-15-intel`**. In November 2026 the
+arm64 macOS runner pool (`macos-15`) repeatedly failed to assign a runner for 15 minutes
+("capacity constraints"), so jobs never started. The Intel image builds both slices of
+the universal binary (aarch64 is cross-compiled, `lipo` joins them), and the tests do not
+depend on the architecture. Move back to an arm64 label when its capacity is reliable;
+GitHub plans to retire the Intel image in 2027.
 
 ## Making a release
 

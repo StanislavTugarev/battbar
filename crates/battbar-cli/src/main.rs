@@ -153,7 +153,11 @@ fn fmt_percent(r: &Reading) -> String {
             let tilde = if r.precision == Precision::Exact { "" } else { "~" };
             format!("{tilde}{p}%")
         }
-        (Status::NotReported, _) => "n/r".into(),
+        (Status::NotReported, _) => match r.note {
+            Some(ReadingNote::NonRechargeableBattery) => "non-rechargeable battery (not supported yet)".into(),
+            Some(ReadingNote::Hidpp10Device) => "n/r (HID++ 1.0)".into(),
+            None => "n/r".into(),
+        },
         (s, _) => format!("{s:?}").to_lowercase(),
     }
 }

@@ -367,6 +367,13 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
+- **0.2.0: non-rechargeable batteries.** 0.1.0 only guards against them (0x1001 below
+  ~3.3 V → "not reported", no alerts). Findings: the Pebble Keys 2 K380s (2× AAA, BLE)
+  reports via 0x1004 v3 with capabilities flags `0x02`, while the rechargeable G502 X
+  PLUS reports `0x0f` — bit 0 of the 0x1004 flags looks like "rechargeable" and can
+  identify the chemistry without voltage heuristics. Voltage-only devices need
+  alkaline/NiMH curves and a chemistry entry in the device database.
+
 - Per-device voltage curves: while a device reports both HID++ 0x1001 voltage and a
   BLE Battery Service percentage, collect (mV, %) pairs and build a curve for that unit,
   to use on transports where only voltage is available.

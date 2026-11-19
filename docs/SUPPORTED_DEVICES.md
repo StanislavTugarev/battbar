@@ -36,6 +36,7 @@ Something missing or wrong? See [ADDING_A_DEVICE.md](ADDING_A_DEVICE.md).
 |---|---|---|---|
 | G502 X PLUS | Mouse | Receiver (wpid `4099`)<br>USB cable (`C095`) | Battery via 0x1004 (Unified Battery), exact percentage. Verified on Lightspeed. |
 | G915 Wireless Mechanical Gaming Keyboard | Keyboard | Receiver (wpid `407C`)<br>USB cable (`C33E`)<br>Bluetooth LE (`B354`) | Battery via 0x1001 (voltage) only; no serial number. Verified on Lightspeed and BLE (GATT). |
+| Pebble Keys 2 K380s | Keyboard | Bluetooth LE (`B377`) | 2× AAA. Battery via 0x1004 (percentage from the firmware). Verified on Bluetooth LE. |
 
 ## SteelSeries headsets (native)
 

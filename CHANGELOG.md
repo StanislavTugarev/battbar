@@ -33,5 +33,16 @@ All notable changes to this project are documented here. The format follows
   per-installation key); `battbar dump` never includes the settings; `battbar record`
   replaces every HID++ unit ID found in the recorded frames with a pseudonym.
 
+### Known limitations
+
+- **Non-rechargeable batteries (AA/AAA)** are not supported yet. A device that reports
+  only a voltage far below any Li-ion level (below about 3.3 V over HID++ 0x1001) is
+  shown as "Non-rechargeable battery — not supported yet", without a percentage and
+  without low-battery alerts — never as 0 %. Devices whose firmware reports a
+  percentage (e.g. Pebble Keys 2 K380s over HID++ 0x1004) already show it. Full support
+  (battery chemistry, alkaline/NiMH curves) is planned for 0.2.0.
+- **HID++ 1.0 devices** behind a receiver are listed without a battery value.
+- **Bolt receivers** are untested.
+
 [Unreleased]: https://github.com/StanislavTugarev/battbar/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/StanislavTugarev/battbar/releases/tag/v0.1.0

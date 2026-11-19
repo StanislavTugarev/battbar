@@ -43,7 +43,11 @@ pub fn status_text(r: &Reading) -> String {
             }
             None => "Battery not reported".into(),
         },
-        Status::NotReported => "Battery not reported".into(),
+        Status::NotReported => match r.note {
+            Some(ReadingNote::NonRechargeableBattery) => "Non-rechargeable battery — not supported yet".into(),
+            Some(ReadingNote::Hidpp10Device) => "Battery not reported (older protocol, not supported yet)".into(),
+            None => "Battery not reported".into(),
+        },
         Status::Asleep => "Asleep".into(),
         Status::Disconnected => "Disconnected".into(),
         Status::Error => "Error reading battery".into(),

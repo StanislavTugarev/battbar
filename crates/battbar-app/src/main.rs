@@ -494,7 +494,7 @@ impl App {
         );
         self.add(
             menu,
-            "Show Bluetooth Devices Without Battery",
+            "Show Devices Without Battery Value",
             Some(Action::ToggleShowUnreported),
             s.show_unreported,
             "",

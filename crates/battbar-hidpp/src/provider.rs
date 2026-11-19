@@ -140,6 +140,12 @@ fn status_for_ping_error(e: &HidppError) -> Status {
     }
 }
 
+fn hidpp10_reading() -> Reading {
+    let mut r = Reading::with_status(Status::NotReported);
+    r.note = Some(ReadingNote::Hidpp10Device);
+    r
+}
+
 impl BatteryProvider for HidppProvider {
     fn name(&self) -> &'static str {
         "hidpp"
@@ -224,6 +230,15 @@ impl BatteryProvider for HidppProvider {
                             d["name"] = json!(i.name);
                             d["model_ids"] = json!(i.model_ids.iter().map(|p| format!("{p:04x}")).collect::<Vec<_>>());
                             d["battery_feature"] = json!(i.battery.map(|b| b.label()));
+                            // Raw 0x1004 capabilities [levels, flags] (chemistry research).
+                            if let Some(BatteryFeature::Unified { index, .. }) = i.battery {
+                                if let Ok(c) = link.ch.call(idx, index, 0, &[]) {
+                                    d["unified_battery_caps"] = json!(transport::to_hex(&c[..c.len().min(4)]));
+                                }
+                                if let Ok(st) = link.ch.call(idx, index, 1, &[]) {
+                                    d["unified_battery_status"] = json!(transport::to_hex(&st[..st.len().min(4)]));
+                                }
+                            }
                         }
                     }
                 }
@@ -345,7 +360,22 @@ impl HidppProvider {
                         src,
                     ));
                 }
-                Ok(_) => {} // HID++ 1.0 device: not supported
+                // HID++ 1.0 devices answer the 2.0 ping with "invalid sub-ID" (or an
+                // old protocol version): listed as "battery not reported", never as garbage.
+                Ok(_) | Err(HidppError::Hidpp10(err10::INVALID_SUBID)) => {
+                    let info = link.devices.get(&idx).cloned();
+                    out.push(self.report(
+                        link_id,
+                        idx,
+                        Transport::Receiver,
+                        vid,
+                        &pids,
+                        info.as_ref(),
+                        Some(slot),
+                        hidpp10_reading(),
+                        "HID++ 1.0",
+                    ));
+                }
                 Err(e @ HidppError::Transport(_)) => return Err(e),
                 Err(e) => {
                     let info = link.devices.get(&idx).cloned();

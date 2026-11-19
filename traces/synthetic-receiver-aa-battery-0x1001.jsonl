@@ -1,0 +1,32 @@
+{"type":"note","text":"Synthetic: Lightspeed receiver, HID++ 2.0 mouse on AA cells, 0x1001 reports 2900 mV (not Li-ion)."}
+{"type":"header","battbar":"0.1.0","link":"hid:046d:c547:2:ff00","kind":"hidapi","vendor_id":1133,"product_id":50503,"product":"USB Receiver","bus":"usb","collections":[[65280,1],[65280,2]]}
+{"type":"frame","t_ms":0,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 81 00 00 00 00"}
+{"type":"frame","t_ms":3,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 81 00 00 09 00"}
+{"type":"frame","t_ms":6,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 20 00 00"}
+{"type":"frame","t_ms":9,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 20 07 08 40 80 11 00 02 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":12,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 30 00 00"}
+{"type":"frame","t_ms":15,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 30 bb a7 00 01 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":18,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 40 00 00"}
+{"type":"frame","t_ms":21,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 ff 83 b5 40 08 41 41 20 4d 4f 55 53 45 00 00 00 00 00 00"}
+{"type":"frame","t_ms":24,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 21 00 00"}
+{"type":"frame","t_ms":27,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 02 00"}
+{"type":"frame","t_ms":30,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 22 00 00"}
+{"type":"frame","t_ms":33,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 02 00"}
+{"type":"frame","t_ms":36,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 23 00 00"}
+{"type":"frame","t_ms":39,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 02 00"}
+{"type":"frame","t_ms":42,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 24 00 00"}
+{"type":"frame","t_ms":45,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 02 00"}
+{"type":"frame","t_ms":48,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 ff 83 b5 25 00 00"}
+{"type":"frame","t_ms":51,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"10 ff 8f 83 b5 02 00"}
+{"type":"frame","t_ms":54,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 00 1b 00 00 aa"}
+{"type":"frame","t_ms":57,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 01 00 1b 04 02 aa 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":60,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 00 0b 00 03 00"}
+{"type":"frame","t_ms":63,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 01 00 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":66,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 00 0b 00 05 00"}
+{"type":"frame","t_ms":69,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 01 00 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":72,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 00 0b 10 04 00"}
+{"type":"frame","t_ms":75,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 01 00 0b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":78,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 00 0b 10 01 00"}
+{"type":"frame","t_ms":81,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 01 00 0b 06 00 03 00 00 00 00 00 00 00 00 00 00 00 00 00"}
+{"type":"frame","t_ms":84,"link":"hid:046d:c547:2:ff00","dir":"out","hex":"10 01 06 0b 00 00 00"}
+{"type":"frame","t_ms":87,"link":"hid:046d:c547:2:ff00","dir":"in","hex":"11 01 06 0b 0b 54 00 00 00 00 00 00 00 00 00 00 00 00 00 00"}

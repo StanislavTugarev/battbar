@@ -125,6 +125,17 @@ mod tests {
     }
 
     #[test]
+    fn non_rechargeable_battery_never_alerts() {
+        // 2.9 V on 0x1001 (AA cells): not reported, no percentage, so no alert.
+        let mut t = AlertTracker::default();
+        let mut d = dev(5, None);
+        d.reading = Reading::with_status(Status::NotReported);
+        d.reading.voltage_mv = Some(2900);
+        d.reading.note = Some(ReadingNote::NonRechargeableBattery);
+        assert!(t.check(&[d], Some(15), false).is_empty());
+    }
+
+    #[test]
     fn off_threshold_and_asleep_never_alert() {
         let mut t = AlertTracker::default();
         assert!(t.check(&[dev(5, None)], None, false).is_empty());
