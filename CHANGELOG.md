@@ -26,6 +26,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- New app icon and menu bar glyph: a bat — battbar — with echolocation arcs, in the
+  same white and periwinkle palette.
 - Development builds use their own HID++ software ID, so they can run next to an
   installed release without mixing up replies over Bluetooth.
 - Privacy statement: battbar is no longer "no network access" but "no telemetry, one
