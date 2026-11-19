@@ -110,6 +110,7 @@ pub struct SteelSeriesProvider {
     /// Use `headsetcontrol` for models without native support.
     pub headsetcontrol_fallback: bool,
     errors: Vec<String>,
+    checks: u64,
 }
 
 const TIMEOUT: Duration = Duration::from_millis(1500);
@@ -123,6 +124,7 @@ impl SteelSeriesProvider {
             trace: None,
             headsetcontrol_fallback: true,
             errors: vec![],
+            checks: 0,
         }
     }
 
@@ -235,6 +237,19 @@ impl BatteryProvider for SteelSeriesProvider {
             }
         }
         out
+    }
+
+    fn check_events(&mut self) -> bool {
+        self.checks += 1;
+        if !self.checks.is_multiple_of(5) {
+            return false;
+        }
+        let mut ids: Vec<String> = vec![];
+        for s in &mut self.sources {
+            ids.extend(s.scan(&self.db).into_iter().map(|c| c.id));
+        }
+        ids.sort();
+        ids != self.links.keys().cloned().collect::<Vec<_>>()
     }
 
     fn diagnostics(&mut self) -> serde_json::Value {

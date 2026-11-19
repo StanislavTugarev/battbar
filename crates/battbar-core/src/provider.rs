@@ -29,16 +29,24 @@ pub trait BatteryProvider: Send {
 
     /// Optional push notifications.
     fn set_event_sink(&mut self, _sink: EventSink) {}
+
+    /// Cheap check between polls: did something happen that warrants a poll now
+    /// (device notification, hotplug)? Must not block for long.
+    fn check_events(&mut self) -> bool {
+        false
+    }
 }
 
 enum Cmd {
     Poll,
     Diagnostics,
+    CheckEvents,
 }
 
 enum Reply {
     Reports(Vec<DeviceReport>),
     Diagnostics(serde_json::Value),
+    Events(bool),
 }
 
 struct Worker {
@@ -75,6 +83,7 @@ impl Engine {
                             let reply = match cmd {
                                 Cmd::Poll => Reply::Reports(p.poll()),
                                 Cmd::Diagnostics => Reply::Diagnostics(p.diagnostics()),
+                                Cmd::CheckEvents => Reply::Events(p.check_events()),
                             };
                             if rtx.send(reply).is_err() {
                                 break;
@@ -129,11 +138,34 @@ impl Engine {
                     w.outstanding -= 1;
                     res.reports.extend(r);
                 }
-                Ok(Reply::Diagnostics(_)) => w.outstanding -= 1,
+                Ok(Reply::Diagnostics(_)) | Ok(Reply::Events(_)) => w.outstanding -= 1,
                 Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => res.timed_out.push(w.name),
             }
         }
         res
+    }
+
+    /// Ask every idle provider whether something happened since the last poll.
+    pub fn check_events(&mut self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        let mut asked = vec![];
+        for (i, w) in self.workers.iter_mut().enumerate() {
+            Self::drain_stale(w);
+            if w.outstanding == 0 && w.tx.send(Cmd::CheckEvents).is_ok() {
+                w.outstanding += 1;
+                asked.push(i);
+            }
+        }
+        let mut any = false;
+        for i in asked {
+            let w = &mut self.workers[i];
+            let left = deadline.saturating_duration_since(Instant::now());
+            if let Ok(r) = w.rx.recv_timeout(left) {
+                w.outstanding -= 1;
+                any |= matches!(r, Reply::Events(true));
+            }
+        }
+        any
     }
 
     pub fn diagnostics(&mut self, timeout: Duration) -> Vec<(&'static str, serde_json::Value)> {
@@ -152,7 +184,7 @@ impl Engine {
                     w.outstanding -= 1;
                     out.push((w.name, v));
                 }
-                Ok(Reply::Reports(_)) => w.outstanding -= 1,
+                Ok(Reply::Reports(_)) | Ok(Reply::Events(_)) => w.outstanding -= 1,
                 Err(_) => out.push((w.name, serde_json::json!({"error": "timeout"}))),
             }
         }

@@ -52,6 +52,7 @@ pub struct HidppProvider {
     links: BTreeMap<String, OpenLink>,
     trace: Option<Arc<Mutex<TraceWriter>>>,
     errors: Vec<String>,
+    checks: u64,
 }
 
 impl HidppProvider {
@@ -62,7 +63,26 @@ impl HidppProvider {
             links: BTreeMap::new(),
             trace: None,
             errors: vec![],
+            checks: 0,
         }
+    }
+
+    /// Notification that should trigger a poll: receiver connection events (HID++ 1.0
+    /// sub-IDs 0x40..=0x4F) or an event of the device's battery feature. Other
+    /// notifications (G-keys, lighting) are ignored.
+    fn relevant(link: &OpenLink, n: &[u8]) -> bool {
+        if n.len() < 4 {
+            return false;
+        }
+        if (0x40..=0x4F).contains(&n[2]) {
+            return true;
+        }
+        link.devices.get(&n[1]).and_then(|d| d.battery).is_some_and(|b| {
+            let idx = match b {
+                BatteryFeature::Unified { index, .. } | BatteryFeature::Voltage { index } | BatteryFeature::Status { index } => index,
+            };
+            idx == n[2]
+        })
     }
 
     /// Record every frame of every link opened from now on.
@@ -150,6 +170,30 @@ impl BatteryProvider for HidppProvider {
             }
         }
         out
+    }
+
+    fn check_events(&mut self) -> bool {
+        self.checks += 1;
+        let mut any = false;
+        for link in self.links.values_mut() {
+            if let Err(HidppError::Transport(TransportError::Disconnected)) = link.ch.drain() {
+                link.broken = true;
+                any = true;
+            }
+            let notes = std::mem::take(&mut link.ch.notifications);
+            any |= notes.iter().any(|n| Self::relevant(link, n));
+        }
+        // Hotplug: every 5th check, compare the set of available links.
+        if self.checks.is_multiple_of(5) {
+            let mut ids: Vec<String> = vec![];
+            for s in &mut self.sources {
+                ids.extend(s.scan(&self.db).into_iter().map(|c| c.id));
+            }
+            ids.sort();
+            let open: Vec<String> = self.links.keys().cloned().collect();
+            any |= ids != open;
+        }
+        any
     }
 
     fn diagnostics(&mut self) -> serde_json::Value {

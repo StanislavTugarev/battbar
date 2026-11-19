@@ -333,3 +333,13 @@ TCC; with an embedded `__info_plist` **and** re-launched as its own responsible 
 (`posix_spawn` + `responsibility_spawnattrs_setdisclaim`) it gets its own permission
 prompt and works. Each rebuilt ad-hoc-signed binary is a new identity for TCC and asks
 again.
+
+## Stage 2 confirmations (2026-11-19)
+
+| Check | Result |
+|---|---|
+| Input Monitoring needed for vendor-only USB interfaces | **No.** Signed `.app`: receiver and base station read normally while `IOHIDCheckAccess(ListenEvent)` = unknown (never requested, never granted). |
+| Spare battery byte 7 reaches 8/8 | **Yes**: 4 → 6 → 7 → 8 over ~1.5 h in the base slot, then stays at 8. |
+| Learned headset ↔ Bluetooth link | Learned live: base flag 00 → 01 with exactly one matching Bluetooth device; with headset Bluetooth off afterwards it stays one device. |
+| Stable self-signed signature keeps Bluetooth permission across rebuilds | Yes: designated requirement `identifier "io.github.battbar" and certificate leaf = H"…"`. |
+| Keyboard hopping Lightspeed ↔ BLE | Event checks re-poll within seconds; one transient split (BLE Battery Service ready before the GATT HID++ link) fixed with a session identity memory. |

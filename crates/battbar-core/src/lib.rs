@@ -3,13 +3,17 @@
 //! device database and the frame transport abstraction.
 
 pub mod devicedb;
+pub mod learner;
 pub mod merge;
 pub mod model;
 pub mod provider;
+pub mod settings;
 pub mod transport;
 
 pub use devicedb::DeviceDb;
-pub use merge::{merge, Device, MergeConfig};
+pub use learner::LinkLearner;
+pub use merge::{merge, Device, IdentityMemory, MergeConfig};
 pub use model::*;
 pub use provider::{BatteryProvider, Engine, EventSink, PollResult};
+pub use settings::{LearnedLink, Settings};
 pub use transport::{FrameTransport, LinkInfo, TransportError};

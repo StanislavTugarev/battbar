@@ -13,7 +13,7 @@ use crate::model::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MergeConfig {
     /// Each group lists full source keys (`provider/source_key`) forced into one device.
     #[serde(default)]
@@ -264,6 +264,46 @@ fn build_device(mut sources: Vec<DeviceReport>) -> Device {
     }
 }
 
+/// Remembers which identity keys belong together (e.g. a BLE peripheral and a HID++
+/// unit ID seen in the same report), so a later report that carries only one of them
+/// (the GATT link is not open yet, the device is away) still merges into the same device.
+#[derive(Debug, Default, Clone)]
+pub struct IdentityMemory {
+    classes: Vec<std::collections::BTreeSet<IdentityKey>>,
+}
+
+impl IdentityMemory {
+    pub fn learn(&mut self, reports: &[DeviceReport]) {
+        for r in reports.iter().filter(|r| r.identity.len() > 1) {
+            let mut set: std::collections::BTreeSet<IdentityKey> = r.identity.iter().cloned().collect();
+            // Merge every existing class that overlaps.
+            let mut i = 0;
+            while i < self.classes.len() {
+                if !self.classes[i].is_disjoint(&set) {
+                    set.extend(self.classes.swap_remove(i));
+                } else {
+                    i += 1;
+                }
+            }
+            self.classes.push(set);
+        }
+    }
+
+    pub fn augment(&self, reports: &mut [DeviceReport]) {
+        for r in reports.iter_mut() {
+            let extra: Vec<IdentityKey> = self
+                .classes
+                .iter()
+                .filter(|c| r.identity.iter().any(|k| c.contains(k)))
+                .flat_map(|c| c.iter().cloned())
+                .filter(|k| !r.identity.contains(k))
+                .collect();
+            r.identity.extend(extra);
+            r.identity.dedup();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,5 +517,45 @@ mod tests {
         let d = &merge(vec![a], &MergeConfig::default())[0];
         assert_eq!(d.components.len(), 1);
         assert_eq!(d.components[0].reading.percent, Some(75));
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    fn rep(provider: &str, key: &str, t: Transport, identity: Vec<IdentityKey>) -> DeviceReport {
+        DeviceReport {
+            provider: provider.into(),
+            source_key: key.into(),
+            source: "t".into(),
+            name: "Keyboard".into(),
+            kind: DeviceKind::Keyboard,
+            transport: t,
+            identity,
+            hints: vec![],
+            reading: Reading::ok(100, Precision::Exact),
+            components: vec![],
+        }
+    }
+
+    #[test]
+    fn ble_report_without_gatt_link_still_merges_with_receiver_slot() {
+        let unit = IdentityKey::HidppUnit { unit_id: "u".into() };
+        let ble = IdentityKey::Stable {
+            namespace: "ble".into(),
+            value: "p".into(),
+        };
+        let mut mem = IdentityMemory::default();
+        // Earlier poll: GATT link reported both keys.
+        mem.learn(&[rep("hidpp", "gatt:p", Transport::BluetoothLe, vec![unit.clone(), ble.clone()])]);
+        // Now: GATT link not open yet; only the Battery Service report and the receiver slot.
+        let mut now = vec![
+            rep("bt-system", "ble:p", Transport::BluetoothLe, vec![ble.clone()]),
+            rep("hidpp", "receiver:1", Transport::Receiver, vec![unit.clone()]),
+        ];
+        assert_eq!(merge(now.clone(), &MergeConfig::default()).len(), 2);
+        mem.augment(&mut now);
+        assert_eq!(merge(now, &MergeConfig::default()).len(), 1);
     }
 }

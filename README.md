@@ -8,8 +8,8 @@ Works with Logitech HID++ devices (Lightspeed, Unifying, Bolt, Bluetooth) and
 SteelSeries wireless headsets, plus any Bluetooth device whose battery macOS already
 knows. battbar is not affiliated with or endorsed by Logitech or SteelSeries.
 
-> **Status: early development.** The command line tool works; the menu bar app is
-> next. See [`docs/SPEC.md`](docs/SPEC.md) and [`docs/DISCOVERY.md`](docs/DISCOVERY.md).
+> **Status: early development.** The menu bar app and the command line tool work on
+> the reference hardware; packaging and releases come next. See [`docs/SPEC.md`](docs/SPEC.md) and [`docs/DISCOVERY.md`](docs/DISCOVERY.md).
 
 ## Command line
 
@@ -65,6 +65,16 @@ Arctis Nova Pro Wireless  [Headset]  83%, exact
   another stable identifier.
 - **Device database as data**: `devices/*.toml`, embedded at build time, overridable
   in `~/.config/battbar/devices/`.
+
+## Permissions
+
+- **Bluetooth** — to read the battery that macOS already knows for paired Bluetooth
+  devices and to talk to Logitech devices over their vendor Bluetooth service. battbar
+  never scans for devices.
+- **Notifications** (optional) — low-battery alerts.
+- **No Input Monitoring.** battbar opens only vendor-specific HID interfaces of
+  receivers and base stations, which macOS does not treat as input; it cannot read
+  keystrokes and never asks for that permission.
 
 ## Privacy
 

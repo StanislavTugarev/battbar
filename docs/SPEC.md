@@ -64,6 +64,12 @@ Keyboard and headset are the test devices for both transports. Measured details 
     BLE devices; **IOBluetooth** for classic Bluetooth audio;
     `system_profiler SPBluetoothDataType -json` only as a fallback for BLE.
   - `hidapi` is used only for USB devices (receivers, base stations, wired devices).
+- **Code signing**: a stable self-signed code-signing certificate instead of ad-hoc
+  signatures, so TCC permissions (Bluetooth) survive rebuilds and updates. Locally the
+  certificate lives in the login keychain (`scripts/create-dev-cert.sh`); the release
+  workflow imports it from CI secrets. Developer ID signing and notarization: not now.
+  Binaries are always installed with `rm` + copy or an atomic `mv`, never copied over
+  an existing file (macOS caches signatures per inode → SIGKILL).
 - **The CLI lives inside the `.app` bundle** (`Contents/MacOS/battbar`), symlinked into
   `PATH` by the Homebrew cask. It also embeds its Info.plist and re-launches itself as
   its own responsible process before touching Bluetooth, because TCC otherwise
@@ -128,22 +134,35 @@ Lightspeed to Bluetooth). The core merges such sources into one device and one i
   the model's `bt_name_patterns` in `devices/*.toml`. Otherwise only manual merge.
 - When the same unit ID is reachable on another transport the devices are merged;
   there is no separate UI state for "paired on the receiver but currently elsewhere".
-- Merged reading:
-  - **percent** comes from the source with the best `precision`
-    (`exact` > `coarse` > `approximate`); on a tie, the source priority below decides;
+- **Merged reading — one rule for every device and transport:**
+  - **percent** comes from the live source with the best `precision`
+    (`exact` > `coarse` > `approximate`);
+  - on equal precision, the source priority decides: vendor protocol (HID++,
+    SteelSeries base) → `headsetcontrol` → system Bluetooth battery;
   - **flags** (`charging`, external power, …) are combined from all live sources;
-  - `status` is the best of the sources (`ok` > `asleep` > `disconnected` > `error`).
-- Source priority on ties: vendor protocol (has charging state) → system Bluetooth
-  battery. Example: Nova Pro through the base is `coarse` (9 levels); if Bluetooth turns
-  out to be `exact`, the percentage comes from Bluetooth and charging state from the base.
+  - `status` is the best of the sources (`ok` > `not reported` > `asleep` >
+    `disconnected` > `error`).
+- Examples on the reference hardware: keyboard on Bluetooth — BLE Battery Service 100 %
+  (`exact`) wins over HID++ 0x1001 ~97 % (`approximate`), voltage and charging state
+  still come from HID++; headset on base + Bluetooth — Bluetooth 83 % (`exact`) wins
+  over the base 8/8 (`coarse`), the spare battery and cable-charging state come from
+  the base.
+- Which Bluetooth sources exist per device class (all of them are merged by the rule
+  above; there is no per-transport source order):
 
-**Bluetooth source order**
+  | Device class | Sources |
+  |---|---|
+  | Logitech over BLE | HID++ via GATT, BLE Battery Service, `system_profiler` (only if CoreBluetooth is unavailable) |
+  | Other BLE | BLE Battery Service, `system_profiler` (same condition) |
+  | Classic Bluetooth audio | IOBluetooth only (`system_profiler` does not carry it) |
 
-| Device class | Order |
-|---|---|
-| Logitech over BLE | HID++ via GATT → BLE Battery Service → `system_profiler` |
-| Other BLE | BLE Battery Service → `system_profiler` |
-| Classic Bluetooth audio | IOBluetooth only (`system_profiler` does not carry it) |
+- **Learned headset ↔ Bluetooth link.** The live companion merge (base flag +
+  `bt_name_patterns`, above) is remembered so the headset stays one device when its
+  Bluetooth is off. A link is stored only when the base's "headset on Bluetooth" flag
+  changes `00 → 01` and, within a window of a few seconds, exactly one connected
+  Bluetooth device matches the model's `bt_name_patterns`. It is stored locally in the
+  settings by the hash of the Bluetooth address (never shown in `dump` or traces).
+  Settings offer "Unlink". With several candidates only manual merging is possible.
 
 ### Device database
 
@@ -217,10 +236,11 @@ protocol requires no Rust changes.
 
 ## Privacy and security (critical)
 
-The keyboard receiver physically carries keystrokes. Whether the app needs **Input
-Monitoring** at all is checked with the `.app` in Stage 2: if opening vendor-only USB
-interfaces does not require it, the app never asks for it and the README does not
-mention it.
+The keyboard receiver physically carries keystrokes. battbar does **not** need Input
+Monitoring: verified in Stage 2 with the signed `.app` — it reads the receiver's and the
+base station's vendor-only interfaces while Input Monitoring was never requested or
+granted (`IOHIDCheckAccess` = unknown). The app never asks for it; `battbar dump`
+reports its status for bug reports.
 
 - Read and write **only** vendor-specific interfaces (HID++ / vendor reports). Never open
   interfaces with Generic Desktop usage pages — on USB or Bluetooth.
@@ -249,7 +269,7 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - `battbar record --out trace.jsonl` — record traffic with vendor interfaces / GATT.
 - Provider tests on recorded traces of the reference hardware; merging tests.
 
-### Stage 2 — Menu bar app
+### Stage 2 — Menu bar app ✔
 
 - One status item per device; icon by type (mouse/keyboard/headset) + percentage;
   charging indicator; dimmed icon without percentage for asleep/disconnected;
@@ -261,8 +281,9 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   (SMAppService).
 - Poll every 60 s + push events where available.
 - macOS notification on low battery (default 15 %, once per discharge cycle).
-- Missing Input Monitoring / Bluetooth permission: clear screen with a button opening
-  the right System Settings pane.
+- Missing Bluetooth permission: clear screen with a button opening the right System
+  Settings pane (Input Monitoring is not needed, see "Privacy and security").
+- Settings live in a "Settings" submenu of every device menu (no separate window).
 
 ### Stage 3 — Open-source readiness
 
@@ -303,11 +324,26 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - A third party can collect data for a new device by following
   `docs/ADDING_A_DEVICE.md` without reading code.
 
+## Backlog (not scheduled)
+
+- Per-device voltage curves: while a device reports both HID++ 0x1001 voltage and a
+  BLE Battery Service percentage, collect (mV, %) pairs and build a curve for that unit,
+  to use on transports where only voltage is available.
+
 ## Process
 
 - Commit at the end of every stage and before large refactorings.
 
 ## Revision history
+
+- **2026-11-19** — Stage 2: menu bar app; Input Monitoring verified as not needed;
+  session identity memory (BLE peripheral ↔ HID++ unit ID) against transient splits;
+  spare battery seen at 8/8 after charging.
+
+- **2026-11-19** — before Stage 2: one merge rule (best precision, then priority,
+  flags combined) replaces per-transport source order; stable self-signed signing;
+  learned headset link with strict conditions and Unlink; `gamepad` kind from Class of
+  Device; backlog: per-unit voltage curves.
 
 - **2026-11-19** — Stage 1: base byte 5 confirmed as "headset on Bluetooth"; spare
   battery byte 7 implemented as component; classic audio precision `exact`; CLI

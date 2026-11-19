@@ -179,6 +179,28 @@ fn map_err(s: String) -> TransportError {
     }
 }
 
+/// Input Monitoring (TCC "ListenEvent") status of this process: `granted`, `denied`
+/// or `unknown` (never asked). battbar never requests it; this is reported in
+/// diagnostics to show that reading vendor interfaces does not depend on it.
+#[cfg(target_os = "macos")]
+pub fn input_monitoring_status() -> &'static str {
+    #[link(name = "IOKit", kind = "framework")]
+    extern "C" {
+        fn IOHIDCheckAccess(request_type: u32) -> u32;
+    }
+    // kIOHIDRequestTypeListenEvent = 1; kIOHIDAccessTypeGranted = 0, Denied = 1, Unknown = 2.
+    match unsafe { IOHIDCheckAccess(1) } {
+        0 => "granted",
+        1 => "denied",
+        _ => "unknown",
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn input_monitoring_status() -> &'static str {
+    "n/a"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

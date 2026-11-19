@@ -160,6 +160,8 @@ pub fn sp_fallback_reports(sp: &[SpDevice], covered_names: &[String]) -> Vec<Dev
 
 pub struct BtSystemProvider {
     sp_cache: Option<(Instant, Vec<SpDevice>)>,
+    last_connected: Option<Vec<String>>,
+    checks: u64,
     errors: Vec<String>,
     /// Show/hide is a front-end decision; the provider always reports.
     pub sp_refresh: Duration,
@@ -169,6 +171,8 @@ impl Default for BtSystemProvider {
     fn default() -> Self {
         BtSystemProvider {
             sp_cache: None,
+            last_connected: None,
+            checks: 0,
             errors: vec![],
             sp_refresh: Duration::from_secs(300),
         }
@@ -260,6 +264,28 @@ impl BatteryProvider for BtSystemProvider {
         let sp = self.system_profiler(!ble_ok);
         out.extend(sp_fallback_reports(&sp, &covered));
         out
+    }
+
+    /// Connect/disconnect of Bluetooth devices (every 3rd check).
+    fn check_events(&mut self) -> bool {
+        self.checks += 1;
+        if !self.checks.is_multiple_of(3) || !battbar_macos::ble::is_authorized() {
+            return false;
+        }
+        let mut now: Vec<String> = battbar_macos::classic::paired_devices()
+            .into_iter()
+            .filter(|d| d.connected)
+            .map(|d| short_hash(&d.address))
+            .collect();
+        if let Ok(c) = battbar_macos::ble::Central::shared() {
+            if let Ok(ps) = c.connected_peripherals(&["180F"]) {
+                now.extend(ps.into_iter().map(|p| p.id));
+            }
+        }
+        now.sort();
+        let changed = self.last_connected.as_ref().is_some_and(|prev| *prev != now);
+        self.last_connected = Some(now);
+        changed
     }
 
     fn diagnostics(&mut self) -> serde_json::Value {

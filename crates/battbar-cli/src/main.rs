@@ -278,7 +278,7 @@ fn main() {
             };
             let mut engine = Engine::new(provs);
             let res = engine.poll(Duration::from_secs(*timeout));
-            let devices = merge(res.reports, &MergeConfig::default());
+            let devices = merge(res.reports, &Settings::load().merge_config());
             if *json {
                 let out = json!({"battbar": env!("CARGO_PKG_VERSION"), "devices": devices, "timed_out": res.timed_out});
                 println!("{}", serde_json::to_string_pretty(&out).unwrap());
@@ -315,7 +315,7 @@ fn main() {
             let mut engine = Engine::new(providers(&cli, &db, bt, None));
             let diags = engine.diagnostics(Duration::from_secs(30));
             let res = engine.poll(Duration::from_secs(10));
-            let devices: Vec<serde_json::Value> = merge(res.reports, &MergeConfig::default())
+            let devices: Vec<serde_json::Value> = merge(res.reports, &Settings::load().merge_config())
                 .iter()
                 .map(|d| {
                     json!({
@@ -329,6 +329,7 @@ fn main() {
                 "os": {"macos": os_version(), "arch": std::env::consts::ARCH},
                 "device_database": db.sources,
                 "bluetooth_enabled": bt,
+                "input_monitoring": battbar_hid::input_monitoring_status(),
                 "providers": diags.into_iter().map(|(n, v)| (n.to_string(), v)).collect::<serde_json::Map<_, _>>(),
                 "devices": devices,
             });
@@ -378,7 +379,7 @@ fn main() {
                         }
                     }
                 }
-                let devices = merge(res.reports, &MergeConfig::default());
+                let devices = merge(res.reports, &Settings::load().merge_config());
                 for d in &devices {
                     w.lock()
                         .unwrap()
