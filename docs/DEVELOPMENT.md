@@ -21,8 +21,23 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p battbar-cli -- probe --no-bluetooth
 scripts/bundle.sh                 # builds target/battbar.app (debug app + CLI), signed
 open target/battbar.app
-BATTBAR_LOG=1 target/battbar.app/Contents/MacOS/battbar-app   # with a poll log on stderr
+open --env BATTBAR_LOG=1 --stderr /tmp/battbar.log target/battbar.app   # poll log
 ```
+
+Start the app through `open` (LaunchServices), not by running
+`Contents/MacOS/battbar-app` from a shell: then the shell is the responsible process for
+TCC, has no Bluetooth usage description, and macOS kills the app
+(`__TCC_CRASHING_DUE_TO_PRIVACY_VIOLATION__`, SIGABRT). The CLI re-launches itself to
+avoid this; the app does not.
+
+Do not run the development app while the release app is running: both use the same
+HID++ software ID, so over Bluetooth (GATT notifications reach both processes) each can
+take the other's replies — seen as a garbled device name and a wrong "coarse" value.
+
+`battbar debug-bt` (hidden) has two IOBluetooth diagnostics:
+`BATTBAR_DEBUG_RUNLOOP=0` (run loop sources and battery values over the first 3 s of a
+process) and `BATTBAR_DEBUG_WATCH=<seconds>` (battery values read every 5 s in this
+process vs. through the helper process).
 
 **Trying the update check** (development builds only): `BATTBAR_DEV_FAKE_VERSION`
 makes the app compare the latest release with that version instead of its own, so
@@ -34,7 +49,7 @@ builds; CI fails if a release binary contains the variable name
 
 ```
 open --env BATTBAR_DEV_FAKE_VERSION=0.1.0 target/battbar.app
-BATTBAR_LOG=1 BATTBAR_DEV_FAKE_VERSION=0.1.0 target/battbar.app/Contents/MacOS/battbar-app
+open --env BATTBAR_LOG=1 --env BATTBAR_DEV_FAKE_VERSION=0.1.0 --stderr /tmp/battbar.log target/battbar.app
 ```
 
 Release and universal (arm64 + x86_64) builds are made **only in CI**
@@ -61,7 +76,7 @@ Audit (0.2.0):
 | hidapi per-device read threads | their own run loops, created and stopped by hidapi (`hid_open_path` / `hid_close` unschedules before the thread ends) | per open device | hidapi-internal, correct |
 | `CBCentralManager` + delegate | a private serial **dispatch queue** owned by the static `Central` | whole process (not tied to the calling thread) | safe |
 | `GattSession` | std channels fed by the central's queue | per session | safe |
-| IOBluetooth (`pairedDevices`, properties) | nothing registered: no notifications, delegates or async calls | synchronous calls on the bt-system provider thread | safe; if notifications are ever added, register them on a long-lived thread that runs its run loop |
+| IOBluetooth (`pairedDevices`, properties) | nothing registered: no notifications, delegates or async calls (checked: no run loop sources appear on the calling thread) | synchronous calls on the bt-system provider thread; battery values in a short-lived helper process (`battbar classic-batteries`), because a process gets them only during its first ~2 s | safe; if notifications are ever added, register them on a long-lived thread that runs its run loop |
 | `NSStatusItem`, menus, `UNUserNotificationCenter`, `SMAppService` | main thread / main queue | whole process | safe |
 
 Paths that could recreate threads:

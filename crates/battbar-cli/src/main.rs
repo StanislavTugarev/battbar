@@ -345,6 +345,13 @@ fn os_version() -> String {
 }
 
 fn main() {
+    // Helper for long-running processes (the app): print paired Bluetooth devices with
+    // current battery values and exit. No settings, no other sources, no re-launch.
+    #[cfg(target_os = "macos")]
+    if std::env::args().nth(1).as_deref() == Some(battbar_macos::classic::HELPER_ARG) {
+        battbar_macos::classic::print_paired_devices_json();
+        return;
+    }
     let cli = Cli::parse();
     let db = db();
     #[cfg(target_os = "macos")]
@@ -394,6 +401,89 @@ fn main() {
         Cmd::DebugBt => {
             let bt = bluetooth_available(&cli);
             eprintln!("bt available: {bt}");
+            // Watch classic battery values the way the app reads them: a long-lived
+            // thread reads every 5 s while the main thread runs its run loop; a new
+            // thread reads alongside for comparison.
+            #[cfg(target_os = "macos")]
+            if bt {
+                if let Some(secs) = std::env::var("BATTBAR_DEBUG_WATCH").ok().and_then(|s| s.parse::<f64>().ok()) {
+                    let start = std::time::Instant::now();
+                    std::thread::spawn(move || loop {
+                        let t = start.elapsed().as_secs();
+                        for d in battbar_macos::classic::paired_devices().iter().filter(|d| d.is_audio()) {
+                            eprintln!(
+                                "[{t:>4}s] long-lived thread: {} connected={} single={:?}",
+                                d.name, d.connected, d.battery_single
+                            );
+                        }
+                        let fresh = std::thread::spawn(battbar_macos::classic::paired_devices)
+                            .join()
+                            .unwrap_or_default();
+                        for d in fresh.iter().filter(|d| d.is_audio()) {
+                            eprintln!(
+                                "[{t:>4}s] new thread:         {} connected={} single={:?}",
+                                d.name, d.connected, d.battery_single
+                            );
+                        }
+                        for d in battbar_macos::classic::paired_devices_fresh().iter().filter(|d| d.is_audio()) {
+                            eprintln!(
+                                "[{t:>4}s] helper process:     {} connected={} single={:?}",
+                                d.name, d.connected, d.battery_single
+                            );
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                    });
+                    if std::env::var_os("BATTBAR_DEBUG_NO_RUNLOOP").is_some() {
+                        std::thread::sleep(std::time::Duration::from_secs_f64(secs));
+                    } else {
+                        battbar_macos::classic::run_current_run_loop(secs);
+                    }
+                    std::process::exit(0);
+                }
+            }
+            #[cfg(target_os = "macos")]
+            if bt && std::env::var_os("BATTBAR_DEBUG_RUNLOOP").is_some() {
+                // Does IOBluetooth attach run loop sources to the calling thread (so its
+                // cached device properties update only while that run loop runs)?
+                let h = std::thread::spawn(|| {
+                    use battbar_macos::classic::*;
+                    let count = |d: &str| d.matches("CFRunLoopSource").count();
+                    let before = current_run_loop_description();
+                    let first = paired_devices();
+                    let after = current_run_loop_description();
+                    eprintln!(
+                        "run loop sources on the reading thread: before {} after {}",
+                        count(&before),
+                        count(&after)
+                    );
+                    for l in after.lines().filter(|l| l.contains("IOBluetooth") || l.contains("Bluetooth")) {
+                        eprintln!("  {}", l.trim().chars().take(160).collect::<String>());
+                    }
+                    let show = |tag: &str, v: &[PairedDevice]| {
+                        for d in v.iter().filter(|d| d.is_audio()) {
+                            eprintln!("  {tag}: {} connected={} single={:?}", d.name, d.connected, d.battery_single);
+                        }
+                    };
+                    show("first read", &first);
+                    show("second read, immediately", &paired_devices());
+                    for ms in [200u64, 1000, 2000] {
+                        std::thread::sleep(std::time::Duration::from_millis(ms));
+                        show(&format!("read after +{ms} ms"), &paired_devices());
+                    }
+                    let secs: f64 = std::env::var("BATTBAR_DEBUG_RUNLOOP")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0.0);
+                    if secs > 0.0 {
+                        eprintln!("waiting {secs} s without running the run loop…");
+                        std::thread::sleep(std::time::Duration::from_secs_f64(secs));
+                        show("no run loop", &paired_devices());
+                        run_current_run_loop(1.0);
+                        show("after run loop", &paired_devices());
+                    }
+                });
+                let _ = h.join();
+            }
             #[cfg(target_os = "macos")]
             {
                 eprintln!("authorization: {}", battbar_macos::ble::authorization());

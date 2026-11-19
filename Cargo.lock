@@ -147,6 +147,8 @@ dependencies = [
  "objc2-core-bluetooth",
  "objc2-foundation",
  "objc2-io-bluetooth",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

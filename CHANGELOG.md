@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Classic Bluetooth headsets (e.g. Arctis Nova Pro on Bluetooth without the base
+  station) showed "Battery not reported" in the app while `battbar probe` showed the
+  value: macOS's IOBluetooth gives a process the battery values only during its first
+  seconds, then 0. The app now reads them on every poll in a short-lived helper process
+  (the bundled `battbar` CLI).
 - G915 on Bluetooth always showed 100 %: its BLE Battery Service does not follow the
   charge (still 100 % while G HUB shows 91 %). The device database now flags it, so the
   value comes from the keyboard's voltage as on the receiver; voltage calibration no

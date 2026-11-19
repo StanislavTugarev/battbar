@@ -233,6 +233,13 @@ protocol requires no Rust changes.
   `batteryPercentLeft` / `Right` / `Case` as components. These are private properties:
   check `respondsToSelector:` before every access. Property missing, or value 0 on a
   connected device → "battery not reported", never a crash and never 0 %.
+- IOBluetooth reports these values only for ~1–2 s after a process first uses it, then
+  0 for the rest of the process (any thread, with or without a run loop; measured
+  2026-11-20). The app is long-running, so every poll reads them in a short-lived
+  helper process: the bundled `battbar` CLI with the hidden argument
+  `classic-batteries` (prints the paired devices as JSON, reads nothing else, touches
+  no settings, prints `[]` without Bluetooth permission; 5 s timeout). If the helper
+  is missing or fails, the provider reads in its own process.
 - Precision of the classic audio value: `exact` (1 % steps measured in Stage 1, HFP 1.7
   battery HF indicator).
 - Battery from `AT+IPHONEACCEV` (10 % steps) → `precision = coarse`.

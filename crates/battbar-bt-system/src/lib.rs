@@ -214,8 +214,12 @@ impl BatteryProvider for BtSystemProvider {
             return out;
         }
 
-        // Classic devices (IOBluetooth).
-        for d in battbar_macos::classic::paired_devices().into_iter().filter(|d| d.is_classic()) {
+        // Classic devices (IOBluetooth). Battery values are read in a short-lived helper
+        // process: in a long-running one IOBluetooth reports them only once.
+        for d in battbar_macos::classic::paired_devices_fresh()
+            .into_iter()
+            .filter(|d| d.is_classic())
+        {
             out.push(classic_report(&ClassicInput {
                 name: d.name.clone(),
                 address_hash: keyed_hash("bt-address", &d.address),
@@ -292,7 +296,7 @@ impl BatteryProvider for BtSystemProvider {
         if !battbar_macos::ble::is_authorized() {
             return serde_json::json!({"bluetooth_authorization": battbar_macos::ble::authorization(), "error": "Bluetooth permission not granted"});
         }
-        let paired: Vec<serde_json::Value> = battbar_macos::classic::paired_devices()
+        let paired: Vec<serde_json::Value> = battbar_macos::classic::paired_devices_fresh()
             .iter()
             .map(|d| {
                 serde_json::json!({
