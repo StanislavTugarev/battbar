@@ -37,6 +37,16 @@ avoid this; the app does not.
 process) and `BATTBAR_DEBUG_WATCH=<seconds>` (battery values read every 5 s in this
 process vs. through the helper process).
 
+**Menu bar item** (0.4): `target/debug/battbar-app --render-bar-preview DIR` (debug
+builds) draws the status item for sample devices in every layout (expanded, compact,
+both collapsed styles, warning, no devices) as 2× PNGs with the real drawing code.
+`BATTBAR_DEV_DUMP_MENU=1` (debug builds) prints the menu as an outline and the item's
+window frame and occlusion state on every render. `battbar-app --probe-menu-bar
+[--width N]` (all builds; no devices, Bluetooth or settings, so it can be started from
+a shell) shows a test item of N points and logs the frontmost app, the item's window
+frame and occlusion state, and the screen's menu bar areas around the notch whenever
+they change.
+
 **Trying the update check** (development builds only): `BATTBAR_DEV_FAKE_VERSION`
 makes the app compare the latest release with that version instead of its own, so
 *Update available* appears against the real GitHub release. Turn on Settings → Check

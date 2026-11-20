@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-21
+
+### Changed
+
+- One menu bar item instead of one per device. **Expanded** shows every device side by
+  side in it (icon and percentage, with the same `~`, ⚡︎ and dimming as before);
+  **Collapsed** shows one icon — battbar's glyph while all devices are fine, the lowest
+  device in red once one is at or below the low-battery threshold. Switch with
+  *Expand / Collapse in Menu Bar* in the menu or under Settings → Menu Bar.
+- New installations start collapsed; installations updated from 0.3 start expanded,
+  so the menu bar looks as before. The saved positions of the old per-device icons are
+  removed; ⌘-drag places the new item and battbar remembers where.
+- One menu with a section per device (battery, components, connection, sources); each
+  device's actions (Move, Hide, Merge With, Split, Unlink, Batteries, Voltage
+  Calibration) are in the submenu of its name.
+- Devices are ordered by type (keyboard, mouse, headset, others); *Move Left / Right*
+  in a device's submenu changes the order, Settings → Menu Bar resets it.
+
+### Added
+
+- `battbar-app --probe-menu-bar [--width N]`: a diagnostic that shows a test menu bar
+  item and logs whether macOS shows or hides it (notch, long app menus, external
+  displays) — groundwork for collapsing automatically when the menu bar is full.
+
 ## [0.3.0] - 2026-11-20
 
 ### Added

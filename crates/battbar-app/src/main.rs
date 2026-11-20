@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! battbar menu bar app: one status item per device.
+//! battbar menu bar app: one status item ("island") with every visible device, or one
+//! icon (collapsed); one menu with a section per device.
 
 mod alerts;
+mod bar;
+mod probe;
 mod ui;
 mod updates;
 mod worker;
@@ -52,6 +55,10 @@ enum Action {
     ToggleUpdateCheck,
     /// "Update available: vX.Y.Z" (version without the `v`).
     ShowUpdate(String),
+    SetDisplayMode(DisplayMode),
+    /// Move a device one place left (−1) or right (+1) in the menu bar and menu.
+    MoveDevice(String, isize),
+    ResetDeviceOrder,
 }
 
 /// Work that must run after the app state borrow is released (modal UI, terminate).
@@ -80,7 +87,9 @@ struct App {
     settings: Settings,
     reports: Vec<DeviceReport>,
     devices: Vec<Device>,
-    items: Vec<(String, Retained<NSStatusItem>)>,
+    item: Option<Retained<NSStatusItem>>,
+    /// IDs of the devices shown in the menu bar / device sections, in display order.
+    shown: Vec<String>,
     actions: Vec<Action>,
     tx: Sender<WorkerCmd>,
     alerts: AlertTracker,
@@ -694,6 +703,11 @@ impl App {
                 }
                 return None;
             }
+            Action::SetDisplayMode(m) => self.settings.display_mode = Some(m),
+            Action::MoveDevice(id, delta) => {
+                self.settings.device_order = ui::move_device(&self.shown, &self.settings.device_order, &id, delta);
+            }
+            Action::ResetDeviceOrder => self.settings.device_order.clear(),
             Action::ForgetCalibration(id) => {
                 battbar_core::calibration::forget(&mut self.settings.voltage_calibration, &id);
             }
@@ -802,6 +816,25 @@ impl App {
             self.launch_at_login_item(menu);
         }
         self.add(menu, "Check for Updates", Some(Action::ToggleUpdateCheck), s.check_for_updates, "");
+        let mb = self.submenu(menu, "Menu Bar");
+        let mode = s.display_mode();
+        self.add(
+            &mb,
+            "Collapsed — One Icon",
+            Some(Action::SetDisplayMode(DisplayMode::Collapsed)),
+            mode == DisplayMode::Collapsed,
+            "",
+        );
+        self.add(
+            &mb,
+            "Expanded — All Devices",
+            Some(Action::SetDisplayMode(DisplayMode::Expanded)),
+            mode == DisplayMode::Expanded,
+            "",
+        );
+        self.separator(&mb);
+        let reset = (!s.device_order.is_empty()).then_some(Action::ResetDeviceOrder);
+        self.add(&mb, "Reset Device Order (by Type)", reset, false, "");
         let low = self.submenu(menu, "Low Battery Alert");
         for t in THRESHOLDS {
             let title = t.map(|v| format!("At {v}%")).unwrap_or_else(|| "Off".into());
@@ -891,6 +924,16 @@ impl App {
             self.add(&sub, "Reset", Some(Action::ForgetCalibration(d.id.clone())), false, "");
         }
         if visible {
+            if let Some(i) = self.shown.iter().position(|x| *x == d.id).filter(|_| self.shown.len() > 1) {
+                let (back, fwd) = match self.settings.display_mode() {
+                    DisplayMode::Expanded => ("Move Left", "Move Right"),
+                    DisplayMode::Collapsed => ("Move Up", "Move Down"),
+                };
+                let left = (i > 0).then(|| Action::MoveDevice(d.id.clone(), -1));
+                let right = (i + 1 < self.shown.len()).then(|| Action::MoveDevice(d.id.clone(), 1));
+                self.add(menu, back, left, false, "");
+                self.add(menu, fwd, right, false, "");
+            }
             self.add(menu, "Hide from Menu Bar", Some(Action::Hide(d.id.clone())), false, "");
         } else {
             self.add(menu, "Show in Menu Bar", Some(Action::Show(d.id.clone())), false, "");
@@ -936,54 +979,85 @@ impl App {
         }
     }
 
-    fn device_menu(&mut self, d: Option<&Device>) -> Retained<NSMenu> {
+    /// The one menu: a section per device (details, sources; actions in the device's
+    /// submenu), status lines, Expand/Collapse, Refresh, Settings, Other Devices, Quit.
+    fn main_menu(&mut self, devices: &[Device]) -> Retained<NSMenu> {
         let menu = NSMenu::new(self.mtm);
         menu.setAutoenablesItems(true);
         menu.setDelegate(Some(ProtocolObject::from_ref(&*self.handler)));
-        match d {
-            Some(d) => {
-                self.add(&menu, &d.name, None, false, "");
-                for l in ui::detail_lines(d) {
-                    self.add(&menu, &format!("    {l}"), None, false, "");
-                }
-                let src = self.submenu(&menu, "    Sources");
-                for l in ui::source_lines(d) {
-                    self.add(&src, &l, None, false, "");
-                }
+        if devices.is_empty() {
+            let text = if self.polled_once {
+                "No devices found"
+            } else {
+                "Looking for devices…"
+            };
+            self.add(&menu, text, None, false, "");
+        }
+        for (i, d) in devices.iter().enumerate() {
+            if i > 0 {
                 self.separator(&menu);
-                self.device_actions(&menu, d, true);
             }
-            None => {
-                let text = if self.polled_once {
-                    "No devices found"
-                } else {
-                    "Looking for devices…"
-                };
-                self.add(&menu, text, None, false, "");
+            // Header: icon + name; the device's actions in its submenu.
+            let actions = self.submenu(&menu, &d.name);
+            if let Some(item) = menu.itemArray().lastObject() {
+                let img = NSImage::imageWithSystemSymbolName_accessibilityDescription(&ns(ui::symbol(d.kind)), Some(&ns(&d.name)));
+                item.setImage(img.as_deref());
+            }
+            self.device_actions(&actions, d, true);
+            for l in ui::detail_lines(d) {
+                self.add(&menu, &format!("    {l}"), None, false, "");
+            }
+            let src = self.submenu(&menu, "    Sources");
+            for l in ui::source_lines(d) {
+                self.add(&src, &l, None, false, "");
             }
         }
+        // Status lines (informational or with an action), after a separator if any.
+        let mut status: Vec<(String, Option<Action>)> = vec![];
         if let Some(t) = &self.last_update {
-            self.add(&menu, &format!("Updated {t}"), None, false, "");
+            status.push((format!("Updated {t}"), None));
         }
         if !self.timed_out.is_empty() {
-            self.add(&menu, &format!("No answer from: {}", self.timed_out.join(", ")), None, false, "");
+            status.push((format!("No answer from: {}", self.timed_out.join(", ")), None));
         }
         let wants_alerts = self.settings.low_battery_threshold.is_some() || self.settings.notify_spare_full;
         if wants_alerts && notify::answered() && !notify::authorized() {
-            self.add(
-                &menu,
-                "Notifications are off for battbar…",
-                Some(Action::OpenNotificationSettings),
-                false,
-                "",
-            );
+            status.push(("Notifications are off for battbar…".into(), Some(Action::OpenNotificationSettings)));
         }
         if battbar_macos::bundle::is_translocated() {
-            self.add(&menu, "Move battbar to Applications…", Some(Action::MoveToApplications), false, "");
+            status.push(("Move battbar to Applications…".into(), Some(Action::MoveToApplications)));
         }
         if matches!(self.bt_authorization, 1 | 2) {
-            self.add(&menu, "Bluetooth access needed…", Some(Action::OpenBluetoothSettings), false, "");
+            status.push(("Bluetooth access needed…".into(), Some(Action::OpenBluetoothSettings)));
         }
+        if !status.is_empty() {
+            self.separator(&menu);
+        }
+        for (title, action) in status {
+            self.add(&menu, &title, action, false, "");
+        }
+        self.separator(&menu);
+        match self.settings.display_mode() {
+            DisplayMode::Collapsed => self.add(
+                &menu,
+                "Expand in Menu Bar",
+                Some(Action::SetDisplayMode(DisplayMode::Expanded)),
+                false,
+                "",
+            ),
+            DisplayMode::Expanded => self.add(
+                &menu,
+                "Collapse in Menu Bar",
+                Some(Action::SetDisplayMode(DisplayMode::Collapsed)),
+                false,
+                "",
+            ),
+        };
+        self.add(&menu, "Refresh", Some(Action::Refresh), false, "r");
+        let s = self.submenu(&menu, "Settings");
+        self.settings_menu(&s);
+        let o = self.submenu(&menu, "Other Devices");
+        self.other_devices_menu(&o);
         if let Some(v) = updates::available(&self.settings, &updates::running_version()) {
             self.add(
                 &menu,
@@ -994,93 +1068,113 @@ impl App {
             );
         }
         self.separator(&menu);
-        self.add(&menu, "Refresh", Some(Action::Refresh), false, "r");
-        let s = self.submenu(&menu, "Settings");
-        self.settings_menu(&s);
-        let o = self.submenu(&menu, "Other Devices");
-        self.other_devices_menu(&o);
-        self.separator(&menu);
         self.add(&menu, "Quit battbar", Some(Action::Quit), false, "q");
         menu
     }
 
-    fn status_item(&mut self, key: &str) -> Retained<NSStatusItem> {
-        if let Some((_, it)) = self.items.iter().find(|(k, _)| k == key) {
+    fn status_item(&mut self) -> Retained<NSStatusItem> {
+        if let Some(it) = &self.item {
             return it.clone();
         }
         let it = NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength);
-        let autosave: String = key.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-        it.setAutosaveName(Some(&ns(&format!("battbar_{autosave}"))));
-        self.items.push((key.to_string(), it.clone()));
+        // Keeps the position the user chose with ⌘-drag.
+        it.setAutosaveName(Some(&ns(STATUS_ITEM_AUTOSAVE)));
+        self.item = Some(it.clone());
         it
+    }
+
+    fn layout(&self) -> ui::Layout {
+        match self.settings.display_mode() {
+            DisplayMode::Collapsed => ui::Layout::Collapsed,
+            DisplayMode::Expanded => ui::Layout::Expanded,
+        }
     }
 
     fn render(&mut self) {
         self.dirty = false;
         self.actions.clear();
-        // The app always keeps at least one status item (the neutral icon below).
         let visible: Vec<Device> = ui::visible(&self.devices, &self.settings)
             .into_iter()
             .filter(|d| self.admitted.contains(&d.id))
             .cloned()
             .collect();
-        let keys: Vec<String> = if visible.is_empty() {
-            vec!["__battbar".into()]
-        } else {
-            visible.iter().map(|d| d.id.clone()).collect()
-        };
-
-        let bar = NSStatusBar::systemStatusBar();
-        self.items.retain(|(k, it)| {
-            let keep = keys.contains(k);
-            if !keep {
-                bar.removeStatusItem(it);
-            }
-            keep
-        });
-
-        if visible.is_empty() {
-            let it = self.status_item("__battbar");
-            if let Some(b) = it.button(self.mtm) {
-                // The app's own glyph (template image from the bundle); SF Symbol fallback.
-                let img = NSImage::imageNamed(&ns("MenuBarIcon")).or_else(|| {
-                    NSImage::imageWithSystemSymbolName_accessibilityDescription(&ns("battery.100percent"), Some(&ns("battbar")))
-                });
-                if let Some(i) = &img {
-                    i.setTemplate(true);
-                }
-                b.setImage(img.as_deref());
-                b.setTitle(&ns(""));
-                b.setToolTip(Some(&ns("battbar")));
-            }
-            let menu = self.device_menu(None);
-            it.setMenu(Some(&menu));
-            return;
+        self.shown = visible.iter().map(|d| d.id.clone()).collect();
+        let refs: Vec<&Device> = visible.iter().collect();
+        let view = ui::bar_view(&refs, self.layout(), self.settings.low_battery_threshold, ui::COLLAPSED_STYLE);
+        let it = self.status_item();
+        if let Some(b) = it.button(self.mtm) {
+            b.setImage(bar::image(&view).as_deref());
+            b.setImagePosition(NSCellImagePosition::ImageOnly);
+            b.setTitle(&ns(""));
+            b.setToolTip(Some(&ns(&view.tooltip)));
         }
+        let menu = self.main_menu(&visible);
+        #[cfg(debug_assertions)]
+        if std::env::var_os("BATTBAR_DEV_DUMP_MENU").is_some() {
+            eprintln!(
+                "--- menu ({:?}, {} segment(s), warning={})",
+                self.layout(),
+                view.segments.len(),
+                view.warning
+            );
+            let win = it.button(self.mtm).and_then(|b| b.window());
+            eprintln!(
+                "item visible={} length={:?} image={:?} window={:?} occlusion={:?}",
+                it.isVisible(),
+                it.length(),
+                it.button(self.mtm).and_then(|b| b.image()).map(|i| i.size()),
+                win.as_ref().map(|w| w.frame()),
+                win.as_ref().map(|w| w.occlusionState())
+            );
+            dump_menu(&menu, 0);
+        }
+        it.setMenu(Some(&menu));
+    }
+}
 
-        for d in &visible {
-            let v = ui::item_view(d);
-            let it = self.status_item(&d.id);
-            if let Some(b) = it.button(self.mtm) {
-                let img = NSImage::imageWithSystemSymbolName_accessibilityDescription(&ns(v.symbol), Some(&ns(&d.name)));
-                if let Some(i) = &img {
-                    i.setTemplate(true);
-                }
-                b.setImage(img.as_deref());
-                b.setImagePosition(if v.title.is_empty() {
-                    NSCellImagePosition::ImageOnly
-                } else {
-                    NSCellImagePosition::ImageLeft
-                });
-                b.setTitle(&ns(&v.title));
-                b.setEnabled(true);
-                // Native dimming (macOS additionally dims the whole menu bar on an
-                // inactive display; that is not ours).
-                b.setAppearsDisabled(v.dimmed);
-                b.setToolTip(Some(&ns(&v.tooltip)));
-            }
-            let menu = self.device_menu(Some(d));
-            it.setMenu(Some(&menu));
+/// Development: print a menu as an indented outline (`·` = informational line,
+/// `✓` = checked, `▸` = submenu).
+#[cfg(debug_assertions)]
+fn dump_menu(menu: &NSMenu, depth: usize) {
+    for item in menu.itemArray().iter() {
+        if item.isSeparatorItem() {
+            eprintln!("{}────", "  ".repeat(depth));
+            continue;
+        }
+        let sub = item.submenu();
+        let mark = if sub.is_some() {
+            "▸"
+        } else if item.action().is_none() {
+            "·"
+        } else if item.state() == NSControlStateValueOn {
+            "✓"
+        } else {
+            " "
+        };
+        eprintln!("{}{mark} {}", "  ".repeat(depth), item.title());
+        if let Some(sub) = sub {
+            dump_menu(&sub, depth + 1);
+        }
+    }
+}
+
+/// Autosave name of the single status item. Up to 0.3 every device had its own item
+/// (`battbar_<id>`, and `battbar___battbar` for the neutral icon).
+const STATUS_ITEM_AUTOSAVE: &str = "battbar";
+
+/// User defaults keys of the per-device status items of 0.3 and older
+/// (`NSStatusItem Preferred Position battbar_…`, `NSStatusItem Visible battbar_…`).
+fn is_old_status_item_key(key: &str) -> bool {
+    key.starts_with("NSStatusItem ") && key.contains(" battbar_")
+}
+
+/// Remove the saved positions of the old per-device status items.
+fn forget_old_status_items() {
+    let defaults = objc2_foundation::NSUserDefaults::standardUserDefaults();
+    let keys = defaults.dictionaryRepresentation().allKeys();
+    for k in keys.iter() {
+        if is_old_status_item_key(&k.to_string()) {
+            defaults.removeObjectForKey(&k);
         }
     }
 }
@@ -1099,6 +1193,54 @@ fn deliver(u: PollUpdate, retries: u8) {
     });
 }
 
+/// Sample devices in several states, each layout written as `<name>.png` (2×, black +
+/// alpha) plus `index.tsv` (name, warning).
+#[cfg(debug_assertions)]
+fn render_bar_preview(dir: &std::path::Path) {
+    let dev = |id: &str, name: &str, kind: DeviceKind, r: Reading| Device {
+        id: id.into(),
+        name: name.into(),
+        kind,
+        reading: r,
+        percent_source: None,
+        components: vec![],
+        sources: vec![],
+        estimate: None,
+    };
+    let mut approx = Reading::ok(88, Precision::Approximate);
+    approx.voltage_mv = Some(4054);
+    let mut charging = Reading::ok(60, Precision::Exact);
+    charging.charging = Some(true);
+    let k = dev("k", "G915", DeviceKind::Keyboard, approx);
+    let m = dev("m", "G502 X PLUS", DeviceKind::Mouse, Reading::ok(52, Precision::Exact));
+    let m_low = dev("m", "G502 X PLUS", DeviceKind::Mouse, Reading::ok(12, Precision::Exact));
+    let h = dev("h", "Arctis Nova Pro", DeviceKind::Headset, charging);
+    let h_ok = dev("h", "Arctis Nova Pro", DeviceKind::Headset, Reading::ok(83, Precision::Exact));
+    let p = dev("p", "DualSense", DeviceKind::Gamepad, Reading::with_status(Status::Asleep));
+    use ui::{CollapsedStyle as S, Layout as L};
+    let cases: Vec<(&str, Vec<&Device>, L, S)> = vec![
+        ("expanded", vec![&k, &m, &h_ok], L::Expanded, S::Glyph),
+        ("expanded-charging-asleep", vec![&k, &m, &h, &p], L::Expanded, S::Glyph),
+        ("compact-low", vec![&k, &m_low, &h_ok], L::Compact, S::Glyph),
+        ("collapsed-glyph", vec![&k, &m, &h_ok], L::Collapsed, S::Glyph),
+        ("collapsed-lowest", vec![&k, &m, &h_ok], L::Collapsed, S::Lowest),
+        ("collapsed-warning", vec![&k, &m_low, &h_ok], L::Collapsed, S::Glyph),
+        ("no-devices", vec![], L::Expanded, S::Glyph),
+    ];
+    let _ = std::fs::create_dir_all(dir);
+    let mut index = String::new();
+    for (name, devices, layout, style) in cases {
+        let view = ui::bar_view(&devices, layout, Some(15), style);
+        let Some(img) = bar::image(&view) else { continue };
+        match bar::write_png(&img, &dir.join(format!("{name}.png")), 2.0) {
+            Ok(()) => index.push_str(&format!("{name}\t{}\n", view.warning)),
+            Err(e) => eprintln!("{name}: {e}"),
+        }
+    }
+    let _ = std::fs::write(dir.join("index.tsv"), index);
+    println!("wrote {}", dir.display());
+}
+
 fn main() {
     // Used by the Homebrew cask on uninstall: remove the login item, no UI.
     if std::env::args().any(|a| a == "--unregister-login-item") {
@@ -1113,6 +1255,25 @@ fn main() {
     if let Some(i) = std::env::args().position(|a| a == "--translocation-info") {
         let p = std::env::args().nth(i + 1).unwrap_or_else(battbar_macos::bundle::path);
         println!("{p} -> {:?}", battbar_macos::bundle::original_path_of(&p));
+        return;
+    }
+    // Discovery for automatic collapsing (see probe.rs). No devices, no settings.
+    if let Some(i) = std::env::args().position(|a| a == "--probe-menu-bar") {
+        let args: Vec<String> = std::env::args().skip(i + 1).collect();
+        let width = args
+            .iter()
+            .position(|a| a == "--width")
+            .and_then(|j| args.get(j + 1))
+            .and_then(|w| w.parse().ok())
+            .unwrap_or(120.0);
+        probe::run(width);
+        return;
+    }
+    // Development: render the status item for sample devices (all layouts) as PNGs.
+    #[cfg(debug_assertions)]
+    if let Some(i) = std::env::args().position(|a| a == "--render-bar-preview") {
+        let dir = std::path::PathBuf::from(std::env::args().nth(i + 1).unwrap_or_else(|| ".".into()));
+        render_bar_preview(&dir);
         return;
     }
     if std::env::args().any(|a| a == "--login-status") {
@@ -1144,7 +1305,8 @@ fn main() {
         settings,
         reports: vec![],
         devices: vec![],
-        items: vec![],
+        item: None,
+        shown: vec![],
         actions: vec![],
         tx,
         alerts: AlertTracker::default(),
@@ -1164,6 +1326,7 @@ fn main() {
         update_in_flight: false,
     };
     APP.with(|c| *c.borrow_mut() = Some(state));
+    forget_old_status_items();
     with_app(|a| a.render());
     notify::request_authorization();
     // First-run question, once the run loop is up. Postponed while App Translocation is
@@ -1201,4 +1364,19 @@ fn main() {
         }
     });
     app.run();
+}
+
+#[cfg(test)]
+mod status_item_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_old_per_device_items_are_forgotten() {
+        assert!(is_old_status_item_key("NSStatusItem Preferred Position battbar_hidpp_9458c379bb62"));
+        assert!(is_old_status_item_key("NSStatusItem Visible battbar___battbar"));
+        assert!(!is_old_status_item_key("NSStatusItem Preferred Position battbar"), "the new item");
+        assert!(!is_old_status_item_key("NSStatusItem Visible battbar"));
+        assert!(!is_old_status_item_key("battbar_something"));
+        assert!(!is_old_status_item_key("NSStatusItem Preferred Position other_battbar"));
+    }
 }

@@ -21,5 +21,5 @@ pub use learner::LinkLearner;
 pub use merge::{merge, Device, IdentityMemory, MergeConfig, NewDeviceGate};
 pub use model::*;
 pub use provider::{BatteryProvider, Engine, EventSink, PollResult};
-pub use settings::{LearnedLink, Settings};
+pub use settings::{DisplayMode, LearnedLink, Settings};
 pub use transport::{FrameTransport, LinkInfo, TransportError};

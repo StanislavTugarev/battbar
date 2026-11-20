@@ -157,9 +157,128 @@ pub fn is_visible(d: &Device, settings: &Settings) -> bool {
     !settings.hidden.contains(&d.id) && !hidden_by_default(d, settings)
 }
 
-/// Devices that get their own status item.
+/// Devices shown in the menu bar and in the device sections of the menu, in display
+/// order.
 pub fn visible<'a>(devices: &'a [Device], settings: &Settings) -> Vec<&'a Device> {
-    devices.iter().filter(|d| is_visible(d, settings)).collect()
+    ordered(devices.iter().filter(|d| is_visible(d, settings)).collect(), &settings.device_order)
+}
+
+/// Default order: keyboard, mouse, headset/headphones, everything else.
+fn kind_rank(k: DeviceKind) -> u8 {
+    match k {
+        DeviceKind::Keyboard => 0,
+        DeviceKind::Mouse => 1,
+        DeviceKind::Headset | DeviceKind::Headphones => 2,
+        DeviceKind::Gamepad | DeviceKind::Other => 3,
+    }
+}
+
+/// Stable display order: by type, then name; with a custom order, the listed devices
+/// first (in that order) and the others after them in the default order.
+pub fn ordered<'a>(mut devices: Vec<&'a Device>, custom: &[String]) -> Vec<&'a Device> {
+    devices.sort_by_cached_key(|d| (kind_rank(d.kind), d.name.to_lowercase(), d.id.clone()));
+    if custom.is_empty() {
+        return devices;
+    }
+    let pos = |d: &Device| custom.iter().position(|x| *x == d.id);
+    let mut out: Vec<&Device> = devices.iter().copied().filter(|d| pos(d).is_some()).collect();
+    out.sort_by_key(|d| pos(d));
+    out.extend(devices.into_iter().filter(|d| pos(d).is_none()));
+    out
+}
+
+/// The custom order after moving `id` one place (`delta` −1 = left, +1 = right) within
+/// `current` (the order shown now). IDs of devices that are not present keep their
+/// relative order after the present ones.
+pub fn move_device(current: &[String], custom: &[String], id: &str, delta: isize) -> Vec<String> {
+    let mut v = current.to_vec();
+    if let Some(i) = v.iter().position(|x| x == id) {
+        let j = i as isize + delta;
+        if (0..v.len() as isize).contains(&j) {
+            v.swap(i, j as usize);
+        }
+    }
+    v.extend(custom.iter().filter(|x| !current.contains(x)).cloned());
+    v
+}
+
+/// What the single status item shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layout {
+    /// Icon and percentage for every visible device.
+    Expanded,
+    /// Icons only; a percentage only on devices at or below the low-battery threshold.
+    /// The automatic step between Expanded and Collapsed (not chosen by the user).
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
+    Compact,
+    /// One icon; see [`CollapsedStyle`].
+    Collapsed,
+}
+
+/// Collapsed status item while no device is at or below the threshold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CollapsedStyle {
+    /// The neutral battbar glyph.
+    Glyph,
+    /// The icon and percentage of the lowest device.
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
+    Lowest,
+}
+
+/// Collapsed: battbar glyph until a device needs attention (see the 0.4.0 sketches).
+pub const COLLAPSED_STYLE: CollapsedStyle = CollapsedStyle::Glyph;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BarView {
+    /// Drawn side by side; empty = the neutral battbar glyph.
+    pub segments: Vec<ItemView>,
+    /// Collapsed only: the shown device is at or below the low-battery threshold
+    /// (drawn in the warning colour).
+    pub warning: bool,
+    pub tooltip: String,
+}
+
+/// At or below the low-battery threshold (the rule of the low-battery alert).
+pub fn is_low(d: &Device, threshold: Option<u8>) -> bool {
+    matches!((threshold, d.reading.percent, d.reading.status), (Some(t), Some(p), Status::Ok) if p <= t)
+}
+
+pub fn bar_view(devices: &[&Device], layout: Layout, threshold: Option<u8>, style: CollapsedStyle) -> BarView {
+    let tooltip = if devices.is_empty() {
+        "battbar".to_string()
+    } else {
+        devices.iter().map(|d| item_view(d).tooltip).collect::<Vec<_>>().join("\n")
+    };
+    let any_low = devices.iter().any(|d| is_low(d, threshold));
+    let segments = match layout {
+        Layout::Expanded => devices.iter().map(|d| item_view(d)).collect(),
+        Layout::Compact => devices
+            .iter()
+            .map(|d| {
+                let mut v = item_view(d);
+                if !is_low(d, threshold) {
+                    v.title.clear();
+                }
+                v
+            })
+            .collect(),
+        Layout::Collapsed => {
+            // First of the lowest in display order.
+            let lowest = devices
+                .iter()
+                .filter(|d| percent_text(&d.reading).is_some())
+                .min_by_key(|d| d.reading.percent);
+            match lowest {
+                Some(d) if any_low || style == CollapsedStyle::Lowest => vec![item_view(d)],
+                _ => vec![],
+            }
+        }
+    };
+    BarView {
+        segments,
+        warning: layout == Layout::Collapsed && any_low,
+        tooltip,
+    }
 }
 
 /// Devices listed under "Other Devices".
@@ -170,6 +289,96 @@ pub fn others<'a>(devices: &'a [Device], settings: &Settings) -> Vec<&'a Device>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn device(id: &str, name: &str, kind: DeviceKind, percent: Option<u8>) -> Device {
+        Device {
+            id: id.into(),
+            name: name.into(),
+            kind,
+            reading: match percent {
+                Some(p) => Reading::ok(p, Precision::Exact),
+                None => Reading::with_status(Status::Asleep),
+            },
+            percent_source: None,
+            components: vec![],
+            sources: vec![],
+            estimate: None,
+        }
+    }
+
+    fn ids(v: &[&Device]) -> Vec<String> {
+        v.iter().map(|d| d.id.clone()).collect()
+    }
+
+    #[test]
+    fn order_by_type_then_custom_then_moves() {
+        let all = [
+            device("pad", "DualSense", DeviceKind::Gamepad, Some(40)),
+            device("hs", "Nova", DeviceKind::Headset, Some(60)),
+            device("m", "G502", DeviceKind::Mouse, Some(50)),
+            device("k2", "Pebble", DeviceKind::Keyboard, Some(100)),
+            device("k1", "G915", DeviceKind::Keyboard, Some(88)),
+        ];
+        let refs: Vec<&Device> = all.iter().collect();
+        assert_eq!(ids(&ordered(refs.clone(), &[])), ["k1", "k2", "m", "hs", "pad"]);
+        // Custom: listed first, the rest by type; IDs of absent devices are ignored.
+        let custom: Vec<String> = ["hs", "gone", "m"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(ids(&ordered(refs.clone(), &custom)), ["hs", "m", "k1", "k2", "pad"]);
+        // Move Left / Right from the shown order; edges stay; absent IDs are kept.
+        let shown = ids(&ordered(refs.clone(), &custom));
+        let c = move_device(&shown, &custom, "k1", -1);
+        assert_eq!(c, ["hs", "k1", "m", "k2", "pad", "gone"]);
+        assert_eq!(ids(&ordered(refs.clone(), &c)), ["hs", "k1", "m", "k2", "pad"]);
+        assert_eq!(move_device(&shown, &custom, "hs", -1)[..5], shown[..]);
+        assert_eq!(move_device(&shown, &custom, "pad", 1)[..5], shown[..]);
+        // The order does not depend on the order the devices arrive in.
+        let rev: Vec<&Device> = all.iter().rev().collect();
+        assert_eq!(ids(&ordered(rev, &c)), ["hs", "k1", "m", "k2", "pad"]);
+    }
+
+    #[test]
+    fn bar_layouts() {
+        let k = device("k", "G915", DeviceKind::Keyboard, Some(88));
+        let mut m = device("m", "G502", DeviceKind::Mouse, Some(12));
+        let h = device("h", "Nova", DeviceKind::Headset, None);
+        let all = [&k, &m, &h];
+        let titles = |b: &BarView| b.segments.iter().map(|s| s.title.clone()).collect::<Vec<_>>();
+
+        let e = bar_view(&all, Layout::Expanded, Some(15), COLLAPSED_STYLE);
+        assert_eq!(titles(&e), ["88%", "12%", ""]);
+        assert_eq!(e.segments.iter().map(|s| s.dimmed).collect::<Vec<_>>(), [false, false, true]);
+        assert!(!e.warning, "no warning colour on a row of devices");
+        assert_eq!(e.tooltip.lines().count(), 3);
+
+        let c = bar_view(&all, Layout::Compact, Some(15), COLLAPSED_STYLE);
+        assert_eq!(titles(&c), ["", "12%", ""], "percentage only below the threshold");
+        assert_eq!(c.segments.len(), 3);
+
+        // Collapsed: the low device, in the warning colour.
+        let low = bar_view(&all, Layout::Collapsed, Some(15), CollapsedStyle::Glyph);
+        assert_eq!((titles(&low), low.warning), (vec!["12%".to_string()], true));
+        assert_eq!(low.segments[0].symbol, "computermouse.fill");
+
+        // Nobody low: the glyph, or the lowest device.
+        m.reading = Reading::ok(40, Precision::Exact);
+        let all = [&k, &m, &h];
+        let g = bar_view(&all, Layout::Collapsed, Some(15), CollapsedStyle::Glyph);
+        assert!(g.segments.is_empty() && !g.warning);
+        let l = bar_view(&all, Layout::Collapsed, Some(15), CollapsedStyle::Lowest);
+        assert_eq!((titles(&l), l.warning), (vec!["40%".to_string()], false));
+        // Threshold off: never a warning.
+        assert!(!bar_view(&all, Layout::Collapsed, None, CollapsedStyle::Glyph).warning);
+        // At the threshold counts as low (as the alert does).
+        m.reading = Reading::ok(15, Precision::Exact);
+        assert!(bar_view(&[&m], Layout::Collapsed, Some(15), CollapsedStyle::Glyph).warning);
+        // Nothing with a value, or no device at all: the glyph.
+        assert!(bar_view(&[&h], Layout::Collapsed, Some(15), CollapsedStyle::Lowest)
+            .segments
+            .is_empty());
+        let none = bar_view(&[], Layout::Expanded, Some(15), COLLAPSED_STYLE);
+        assert!(none.segments.is_empty());
+        assert_eq!(none.tooltip, "battbar");
+    }
 
     fn dev(kind: DeviceKind, reading: Reading) -> Device {
         Device {

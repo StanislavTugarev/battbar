@@ -28,6 +28,16 @@ pub fn use_dev_profile() {
     }
 }
 
+/// How battbar appears in the menu bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayMode {
+    /// One icon; every device is in the menu (default for new installations).
+    Collapsed,
+    /// All visible devices side by side in one status item.
+    Expanded,
+}
+
 /// The user's choice of cell chemistry for a device with replaceable AA/AAA cells.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChemistryChoice {
@@ -92,6 +102,12 @@ pub struct Settings {
     pub available_update: Option<String>,
     /// Version the user was already notified about (one notification per version).
     pub update_notified: Option<String>,
+    /// Collapsed / Expanded. `None` only before the first start of 0.4 decided it (see
+    /// [`Settings::init_display_mode`]).
+    pub display_mode: Option<DisplayMode>,
+    /// Device IDs in the order the user arranged them (Move Left / Right). Empty: by
+    /// type. Devices not listed follow in the default order.
+    pub device_order: Vec<String>,
 }
 
 impl Default for Settings {
@@ -118,6 +134,8 @@ impl Default for Settings {
             next_update_check: None,
             available_update: None,
             update_notified: None,
+            display_mode: None,
+            device_order: vec![],
         }
     }
 }
@@ -125,6 +143,25 @@ impl Default for Settings {
 impl Settings {
     pub fn path() -> Option<PathBuf> {
         config_dir().map(|d| d.join("config.toml"))
+    }
+
+    pub fn display_mode(&self) -> DisplayMode {
+        self.display_mode.unwrap_or(DisplayMode::Collapsed)
+    }
+
+    /// First start of 0.4: new installations start collapsed; an installation that
+    /// already had settings (0.3 and older showed every device) starts expanded, so its
+    /// menu bar looks as before. Returns whether anything changed.
+    pub fn init_display_mode(&mut self, settings_existed: bool) -> bool {
+        if self.display_mode.is_some() {
+            return false;
+        }
+        self.display_mode = Some(if settings_existed {
+            DisplayMode::Expanded
+        } else {
+            DisplayMode::Collapsed
+        });
+        true
     }
 
     pub fn chemistry_for(&self, device: &str) -> Option<Chemistry> {
@@ -151,7 +188,13 @@ impl Settings {
     /// (or with settings from before keyed hashes) a key is generated and IDs stored
     /// under the old scheme are dropped, since they cannot be mapped to the new one.
     pub fn load_and_init() -> Self {
+        let existed = Self::path().is_some_and(|p| p.exists());
         let mut s = Self::load();
+        if s.init_display_mode(existed) {
+            if let Err(e) = s.save() {
+                eprintln!("battbar: saving settings: {e}");
+            }
+        }
         if !crate::ids::set_install_salt(&s.salt) {
             s.salt = crate::ids::new_salt();
             s.hidden.clear();
@@ -233,6 +276,27 @@ mod tests {
         let p: Settings = toml::from_str("poll_interval_secs = 30").unwrap();
         assert_eq!(p.poll_interval_secs, 30);
         assert_eq!(p.low_battery_threshold, Some(15));
+    }
+
+    #[test]
+    fn display_mode_new_installs_collapse_and_03_configs_expand() {
+        // No settings file yet: a new installation.
+        let mut s = Settings::default();
+        assert!(s.init_display_mode(false));
+        assert_eq!(s.display_mode(), DisplayMode::Collapsed);
+        // A 0.3 file: no display_mode key.
+        let v03 = "salt = \"ab\"\npoll_interval_secs = 60\nhidden = [\"bt:1\"]\nasked_launch_at_login = true\n";
+        let mut s: Settings = toml::from_str(v03).unwrap();
+        assert_eq!(s.display_mode, None);
+        assert!(s.init_display_mode(true));
+        assert_eq!(s.display_mode(), DisplayMode::Expanded);
+        // Decided once; the user's later choice stays.
+        s.display_mode = Some(DisplayMode::Collapsed);
+        assert!(!s.init_display_mode(true));
+        assert_eq!(s.display_mode(), DisplayMode::Collapsed);
+        let t = toml::to_string_pretty(&s).unwrap();
+        assert!(t.contains("display_mode = \"collapsed\""));
+        assert_eq!(toml::from_str::<Settings>(&t).unwrap().display_mode(), DisplayMode::Collapsed);
     }
 
     #[test]

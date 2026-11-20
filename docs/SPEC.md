@@ -10,7 +10,8 @@ This is the working specification of the project. Changes to the sections marked
 A free, open-source macOS menu bar app that shows the battery of wireless mice,
 keyboards and headsets regardless of how they are connected: through proprietary
 2.4 GHz receivers and base stations (Logitech Lightspeed / Unifying / Bolt,
-SteelSeries) and over Bluetooth. One status item with a percentage per device.
+SteelSeries) and over Bluetooth. One status item: every device with its percentage,
+or one icon (collapsed).
 
 Why:
 
@@ -368,7 +369,7 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ### Stage 2 — Menu bar app ✔
 
-- One status item per device; icon by type (mouse/keyboard/headset) + percentage;
+- One status item per device (until 0.3; see "Menu bar display (0.4)"); icon by type (mouse/keyboard/headset) + percentage;
   charging indicator; dimmed icon without percentage for asleep/disconnected;
   `~` before the percentage for `coarse`/`approximate`.
 - Click menu: name, transport, status, components, last update, "Refresh",
@@ -397,6 +398,55 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - Identity memory (which identity keys belong to one device, e.g. CoreBluetooth
   peripheral ↔ HID++ unit ID) is stored in the settings as hashes only. Device IDs in
   the settings are hashes as well.
+
+### Menu bar display (0.4)
+
+- **One status item** (`NSVariableStatusItemLength`, autosave name `battbar`, so a
+  ⌘-dragged position is kept). Its image is drawn by the app: every segment (SF Symbol
+  by type + percentage text) side by side in one **template** image, drawn on demand
+  at the screen's scale, so macOS colours it for light/dark menu bars and the open
+  state. Dimmed segments (asleep, disconnected, no value) use alpha 0.35. With no
+  segment the item shows battbar's glyph.
+- **Order**: by type (keyboard, mouse, headset/headphones, others), then name. *Move
+  Left / Right* (collapsed: *Move Up / Down*) in a device's submenu stores a custom
+  order (`device_order`); devices not in it follow in the default order; Settings →
+  Menu Bar → *Reset Device Order* clears it.
+- **Menu**: one menu. Per visible device a section: header (icon + name) whose
+  submenu holds the device's actions (Move, Hide, Merge With, Split, Unlink,
+  Batteries, Voltage Calibration); detail lines (battery, components, charging,
+  connection); *Sources*. Then status lines (*Updated HH:MM* — one poll covers all
+  devices, so one time —, providers without answer, permission and translocation
+  hints), *Expand / Collapse in Menu Bar*, Refresh, Settings, Other Devices, *Update
+  available* (when found), Quit.
+- **Modes** (`display_mode`): *Collapsed* (default for new installations) and
+  *Expanded*. On the first start of 0.4 an installation that already has a settings
+  file gets *Expanded* (its menu bar looks as in 0.3); a new one *Collapsed*
+  (`Settings::init_display_mode`, tested).
+- **Collapsed** item: battbar's glyph while no visible device is at or below the
+  low-battery threshold (same rule as the alert: `percent ≤ threshold`, threshold
+  off = never); otherwise the lowest device's icon and percentage in the **system
+  red**, drawn as a normal (non-template) image — the macOS 26 menu bar ignores
+  `contentTintColor` on template images. Alternative considered: always the lowest
+  device's percentage (`CollapsedStyle::Lowest`); see the 0.4.0 review.
+- **Compact** layout (icons; percentage only at or below the threshold) exists for
+  the automatic step Expanded → Compact → Collapsed; not selectable.
+- **Migration from 0.3**: the old per-device items (`NSStatusItem … battbar_<id>` in
+  the user defaults) are removed at start.
+- **Automatic collapsing** when the item is hidden by the system or by the notch: not
+  implemented. Discovery first (`battbar-app --probe-menu-bar`, results to be recorded
+  here): which signal is reliable — window occlusion state, the window frame against
+  `NSScreen.auxiliaryTopLeftArea` / `auxiliaryTopRightArea` / `visibleFrame` — on a
+  display with a notch, an external display, and with long (Xcode, Pages) vs. short
+  (Finder) app menus. First observation on the reference Mac mini (no notch, two
+  displays): an item too wide to fit has its window positioned but the occlusion
+  state's visible bit clear; before placement the window is off-screen (`screen=nil`).
+  Planned rules: check after the item's content changes, on screen parameter changes,
+  and on app activation (shrink only); grow back only on screen/resolution/display
+  configuration changes; remember the step per screen configuration; if no reliable
+  signal exists, Expanded without automatic collapsing plus a hint in the menu.
+- Clicking a segment to open the menu at that device's section: in the backlog — a
+  status item with a menu cannot see where it was clicked, and AppKit has no public
+  API to open a menu with a given item highlighted.
 
 ### Stage 3 — Open-source readiness ✔ (publishing pending)
 
@@ -444,6 +494,10 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
+- **Click a segment → its section.** Open the menu with the clicked device's section
+  highlighted. Needs the item without an attached menu (to get the click position) and
+  a way to highlight an item that AppKit does not offer publicly; possible fallback:
+  open a menu with only that device's section.
 - **Automatic updates (Sparkle).** Download and install updates in the app instead of
   only announcing them. Notes for when it is scheduled:
   - the cask must then declare `auto_updates true` (so `brew upgrade` leaves the app to
@@ -488,6 +542,9 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Revision history
 
+- **2026-11-21** — 0.4.0: one status item (expanded / collapsed), one sectioned menu,
+  device order, 0.3 migration, red collapsed warning (non-template image); automatic
+  collapsing pending discovery (`--probe-menu-bar`); segment click → backlog.
 - **2026-11-20** — 0.3.0-rc.2: G915 BLE Battery Service flagged unreliable (database
   flag, never calibrated from); device IDs of linked/merged devices from the whole
   group; classic Bluetooth battery read in a helper process (IOBluetooth gives a

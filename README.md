@@ -2,7 +2,8 @@
 
 Battery indicators in the macOS menu bar for wireless mice, keyboards and headsets —
 whether they are connected through a 2.4 GHz receiver or base station, or over
-Bluetooth. One icon with a percentage per device. Free and open source
+Bluetooth. One icon in the menu bar — or, expanded, every device with its percentage
+side by side. Free and open source
 (GPL-3.0-or-later), no telemetry. The only network request is an optional daily
 update check, off unless you turn it on.
 
@@ -101,13 +102,22 @@ one notification per version. Pre-releases are ignored.
 
 ## Using it
 
-- Each device gets an icon by type with its battery. `~` means the value is coarse
-  (e.g. 9 levels) or estimated (from voltage); ⚡︎ means charging; a dimmed icon without
-  percentage means the device is asleep or disconnected.
-- Click an icon for details: connection, components (e.g. the spare battery in a base
-  station), where the value comes from, and actions for that device — hide it, merge it
-  with another entry, split it, or unlink a remembered Bluetooth connection.
-- **Settings** (in every menu): launch at login, update check (off by default),
+- **Collapsed** (default): one icon. It is battbar's own glyph while every device is
+  fine, and turns into the lowest device's icon and percentage in red once a device is
+  at or below the low-battery threshold.
+- **Expanded**: one menu bar item with every device side by side — an icon by type
+  and its battery. `~` means the value is coarse (e.g. 9 levels) or estimated (from
+  voltage); ⚡︎ means charging; a dimmed icon without percentage means the device is
+  asleep or disconnected. Switch with **Expand in Menu Bar** / **Collapse in Menu Bar**
+  in the menu, or under Settings → Menu Bar. ⌘-drag moves the item; battbar keeps the
+  place. Devices are ordered by type (keyboard, mouse, headset, others); **Move
+  Left/Right** in a device's submenu changes that, Settings → Menu Bar resets it.
+- Click it for one menu with a section per device: battery, components (e.g. the
+  spare battery in a base station), connection and where the value comes from. The
+  device's name opens its actions — move it, hide it, merge it with another entry,
+  split it, or unlink a remembered Bluetooth connection.
+- Updating from 0.3 keeps the expanded look; new installations start collapsed.
+- **Settings**: launch at login, update check (off by default), menu bar mode,
   update interval, low-battery alert threshold (default 15 %, once per discharge),
   spare-battery alert, devices without a battery value, `headsetcontrol` fallback. **Other Devices** lists hidden devices.
 - **Launch at Login.** On first start battbar asks once whether it should start at
