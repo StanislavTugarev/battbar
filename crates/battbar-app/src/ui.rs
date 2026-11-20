@@ -232,9 +232,6 @@ pub const COLLAPSED_STYLE: CollapsedStyle = CollapsedStyle::Glyph;
 pub struct BarView {
     /// Drawn side by side; empty = the neutral battbar glyph.
     pub segments: Vec<ItemView>,
-    /// Collapsed only: the shown device is at or below the low-battery threshold
-    /// (drawn in the warning colour).
-    pub warning: bool,
     pub tooltip: String,
 }
 
@@ -274,11 +271,7 @@ pub fn bar_view(devices: &[&Device], layout: Layout, threshold: Option<u8>, styl
             }
         }
     };
-    BarView {
-        segments,
-        warning: layout == Layout::Collapsed && any_low,
-        tooltip,
-    }
+    BarView { segments, tooltip }
 }
 
 /// Devices listed under "Other Devices".
@@ -347,30 +340,33 @@ mod tests {
         let e = bar_view(&all, Layout::Expanded, Some(15), COLLAPSED_STYLE);
         assert_eq!(titles(&e), ["88%", "12%", ""]);
         assert_eq!(e.segments.iter().map(|s| s.dimmed).collect::<Vec<_>>(), [false, false, true]);
-        assert!(!e.warning, "no warning colour on a row of devices");
         assert_eq!(e.tooltip.lines().count(), 3);
 
         let c = bar_view(&all, Layout::Compact, Some(15), COLLAPSED_STYLE);
         assert_eq!(titles(&c), ["", "12%", ""], "percentage only below the threshold");
         assert_eq!(c.segments.len(), 3);
 
-        // Collapsed: the low device, in the warning colour.
+        // Collapsed: the low device instead of the glyph.
         let low = bar_view(&all, Layout::Collapsed, Some(15), CollapsedStyle::Glyph);
-        assert_eq!((titles(&low), low.warning), (vec!["12%".to_string()], true));
+        assert_eq!(titles(&low), ["12%"]);
         assert_eq!(low.segments[0].symbol, "computermouse.fill");
 
         // Nobody low: the glyph, or the lowest device.
         m.reading = Reading::ok(40, Precision::Exact);
         let all = [&k, &m, &h];
         let g = bar_view(&all, Layout::Collapsed, Some(15), CollapsedStyle::Glyph);
-        assert!(g.segments.is_empty() && !g.warning);
+        assert!(g.segments.is_empty());
         let l = bar_view(&all, Layout::Collapsed, Some(15), CollapsedStyle::Lowest);
-        assert_eq!((titles(&l), l.warning), (vec!["40%".to_string()], false));
-        // Threshold off: never a warning.
-        assert!(!bar_view(&all, Layout::Collapsed, None, CollapsedStyle::Glyph).warning);
+        assert_eq!(titles(&l), ["40%"]);
+        // Threshold off: the glyph stays, however low.
+        m.reading = Reading::ok(5, Precision::Exact);
+        assert!(bar_view(&[&k, &m], Layout::Collapsed, None, CollapsedStyle::Glyph)
+            .segments
+            .is_empty());
         // At the threshold counts as low (as the alert does).
         m.reading = Reading::ok(15, Precision::Exact);
-        assert!(bar_view(&[&m], Layout::Collapsed, Some(15), CollapsedStyle::Glyph).warning);
+        let at = bar_view(&[&k, &m], Layout::Collapsed, Some(15), CollapsedStyle::Glyph);
+        assert_eq!(titles(&at), ["15%"]);
         // Nothing with a value, or no device at all: the glyph.
         assert!(bar_view(&[&h], Layout::Collapsed, Some(15), CollapsedStyle::Lowest)
             .segments

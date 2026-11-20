@@ -103,8 +103,8 @@ one notification per version. Pre-releases are ignored.
 ## Using it
 
 - **Collapsed** (default): one icon. It is battbar's own glyph while every device is
-  fine, and turns into the lowest device's icon and percentage in red once a device is
-  at or below the low-battery threshold.
+  fine, and turns into the lowest device's icon and percentage once a device is at or
+  below the low-battery threshold.
 - **Expanded**: one menu bar item with every device side by side — an icon by type
   and its battery. `~` means the value is coarse (e.g. 9 levels) or estimated (from
   voltage); ⚡︎ means charging; a dimmed icon without percentage means the device is

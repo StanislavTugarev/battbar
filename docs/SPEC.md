@@ -424,10 +424,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   (`Settings::init_display_mode`, tested).
 - **Collapsed** item: battbar's glyph while no visible device is at or below the
   low-battery threshold (same rule as the alert: `percent ≤ threshold`, threshold
-  off = never); otherwise the lowest device's icon and percentage in the **system
-  red**, drawn as a normal (non-template) image — the macOS 26 menu bar ignores
-  `contentTintColor` on template images. Alternative considered: always the lowest
-  device's percentage (`CollapsedStyle::Lowest`); see the 0.4.0 review.
+  off = never); otherwise the lowest device's icon and percentage. Always
+  monochrome (template image), no colours — maintainer's decision 2026-11-21 (a red
+  variant was tried; note: the macOS 26 menu bar ignores `contentTintColor` on
+  template images, colour would need a non-template image). Alternative considered:
+  always the lowest device's percentage (`CollapsedStyle::Lowest`).
 - **Compact** layout (icons; percentage only at or below the threshold) exists for
   the automatic step Expanded → Compact → Collapsed; not selectable.
 - **Migration from 0.3**: the old per-device items (`NSStatusItem … battbar_<id>` in
@@ -543,7 +544,7 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 ## Revision history
 
 - **2026-11-21** — 0.4.0: one status item (expanded / collapsed), one sectioned menu,
-  device order, 0.3 migration, red collapsed warning (non-template image); automatic
+  device order, 0.3 migration, monochrome collapsed item (no red); automatic
   collapsing pending discovery (`--probe-menu-bar`); segment click → backlog.
 - **2026-11-20** — 0.3.0-rc.2: G915 BLE Battery Service flagged unreliable (database
   flag, never calibrated from); device IDs of linked/merged devices from the whole

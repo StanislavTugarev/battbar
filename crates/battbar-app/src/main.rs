@@ -1111,12 +1111,7 @@ impl App {
         let menu = self.main_menu(&visible);
         #[cfg(debug_assertions)]
         if std::env::var_os("BATTBAR_DEV_DUMP_MENU").is_some() {
-            eprintln!(
-                "--- menu ({:?}, {} segment(s), warning={})",
-                self.layout(),
-                view.segments.len(),
-                view.warning
-            );
+            eprintln!("--- menu ({:?}, {} segment(s))", self.layout(), view.segments.len());
             let win = it.button(self.mtm).and_then(|b| b.window());
             eprintln!(
                 "item visible={} length={:?} image={:?} window={:?} occlusion={:?}",
@@ -1194,7 +1189,7 @@ fn deliver(u: PollUpdate, retries: u8) {
 }
 
 /// Sample devices in several states, each layout written as `<name>.png` (2×, black +
-/// alpha) plus `index.tsv` (name, warning).
+/// alpha) plus `index.tsv` (names).
 #[cfg(debug_assertions)]
 fn render_bar_preview(dir: &std::path::Path) {
     let dev = |id: &str, name: &str, kind: DeviceKind, r: Reading| Device {
@@ -1224,7 +1219,7 @@ fn render_bar_preview(dir: &std::path::Path) {
         ("compact-low", vec![&k, &m_low, &h_ok], L::Compact, S::Glyph),
         ("collapsed-glyph", vec![&k, &m, &h_ok], L::Collapsed, S::Glyph),
         ("collapsed-lowest", vec![&k, &m, &h_ok], L::Collapsed, S::Lowest),
-        ("collapsed-warning", vec![&k, &m_low, &h_ok], L::Collapsed, S::Glyph),
+        ("collapsed-low", vec![&k, &m_low, &h_ok], L::Collapsed, S::Glyph),
         ("no-devices", vec![], L::Expanded, S::Glyph),
     ];
     let _ = std::fs::create_dir_all(dir);
@@ -1233,7 +1228,7 @@ fn render_bar_preview(dir: &std::path::Path) {
         let view = ui::bar_view(&devices, layout, Some(15), style);
         let Some(img) = bar::image(&view) else { continue };
         match bar::write_png(&img, &dir.join(format!("{name}.png")), 2.0) {
-            Ok(()) => index.push_str(&format!("{name}\t{}\n", view.warning)),
+            Ok(()) => index.push_str(&format!("{name}\n")),
             Err(e) => eprintln!("{name}: {e}"),
         }
     }

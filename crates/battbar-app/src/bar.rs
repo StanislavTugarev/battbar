@@ -3,10 +3,8 @@
 //! into one **template** image, so macOS colours it for a light or dark menu bar and
 //! for the highlighted (open) state. Dimmed segments use a lower alpha, which template
 //! images keep. The image is drawn on demand at the scale of the screen it is on.
-//!
-//! The warning state (collapsed, a device at or below the threshold) is drawn in the
-//! system red as a normal, non-template image: the menu bar of macOS 26 ignores the
-//! button's `contentTintColor` on template images.
+//! Always monochrome (black or white, as macOS chooses): no colours, also not for a
+//! low battery (the collapsed item then shows that device instead of the glyph).
 
 use crate::ui::{BarView, ItemView};
 use block2::RcBlock;
@@ -34,34 +32,28 @@ struct Part {
     width: f64,
 }
 
-fn symbol(name: &str, description: &str, color: Option<&NSColor>) -> Option<(Retained<NSImage>, NSSize)> {
+fn symbol(name: &str, description: &str) -> Option<(Retained<NSImage>, NSSize)> {
     let base =
         NSImage::imageWithSystemSymbolName_accessibilityDescription(&NSString::from_str(name), Some(&NSString::from_str(description)))?;
-    let mut config = NSImageSymbolConfiguration::configurationWithPointSize_weight(SYMBOL_POINT_SIZE, unsafe { NSFontWeightRegular });
-    if let Some(c) = color {
-        config = config.configurationByApplyingConfiguration(&NSImageSymbolConfiguration::configurationWithHierarchicalColor(c));
-    }
+    let config = NSImageSymbolConfiguration::configurationWithPointSize_weight(SYMBOL_POINT_SIZE, unsafe { NSFontWeightRegular });
     let img = base.imageWithSymbolConfiguration(&config).unwrap_or(base);
     let size = img.size();
     Some((img, size))
 }
 
-fn text_attributes(font: &NSFont, alpha: f64, color: Option<&NSColor>) -> Retained<NSDictionary<NSString, AnyObject>> {
-    let color = match color {
-        Some(c) => c.colorWithAlphaComponent(alpha),
-        None => NSColor::colorWithWhite_alpha(0.0, alpha),
-    };
+fn text_attributes(font: &NSFont, alpha: f64) -> Retained<NSDictionary<NSString, AnyObject>> {
+    let color = NSColor::colorWithWhite_alpha(0.0, alpha);
     let keys: [&NSString; 2] = unsafe { [NSFontAttributeName, NSForegroundColorAttributeName] };
     let values: [&AnyObject; 2] = [font, &color];
     NSDictionary::from_slices(&keys, &values)
 }
 
-fn part(v: &ItemView, font: &NSFont, color: Option<&NSColor>) -> Part {
+fn part(v: &ItemView, font: &NSFont) -> Part {
     let alpha = if v.dimmed { DIMMED_ALPHA } else { 1.0 };
-    let icon = symbol(v.symbol, &v.tooltip, color);
+    let icon = symbol(v.symbol, &v.tooltip);
     let text = (!v.title.is_empty()).then(|| {
         let s = NSString::from_str(&v.title);
-        let size = unsafe { s.sizeWithAttributes(Some(&text_attributes(font, 1.0, None))) };
+        let size = unsafe { s.sizeWithAttributes(Some(&text_attributes(font, 1.0))) };
         (s, size)
     });
     let mut width = icon.as_ref().map(|(_, s)| s.width).unwrap_or(0.0);
@@ -103,9 +95,7 @@ pub fn image(view: &BarView) -> Option<Retained<NSImage>> {
         return Some(img);
     }
     let font = NSFont::menuBarFontOfSize(0.0);
-    let color = view.warning.then(NSColor::systemRedColor);
-    let parts: Vec<Part> = view.segments.iter().map(|v| part(v, &font, color.as_deref())).collect();
-    let text_color = color.clone();
+    let parts: Vec<Part> = view.segments.iter().map(|v| part(v, &font)).collect();
     let height = NSStatusBar::systemStatusBar().thickness().max(18.0);
     let width = (parts.iter().map(|p| p.width).sum::<f64>() + SEGMENT_GAP * (parts.len() as f64 - 1.0)).ceil();
     let draw = RcBlock::new(move |_dst: NSRect| -> Bool {
@@ -118,7 +108,7 @@ pub fn image(view: &BarView) -> Option<Retained<NSImage>> {
             }
             if let Some((t, s)) = &p.text {
                 let y = ((height - s.height) / 2.0).round();
-                let attrs = text_attributes(&font, p.alpha, text_color.as_deref());
+                let attrs = text_attributes(&font, p.alpha);
                 unsafe { t.drawAtPoint_withAttributes(NSPoint::new(x, y), Some(&attrs)) };
                 x += s.width.ceil();
             }
@@ -130,7 +120,7 @@ pub fn image(view: &BarView) -> Option<Retained<NSImage>> {
         Bool::YES
     });
     let img = NSImage::imageWithSize_flipped_drawingHandler(NSSize::new(width, height), false, &draw);
-    img.setTemplate(!view.warning);
+    img.setTemplate(true);
     img.setAccessibilityDescription(Some(&NSString::from_str(&view.tooltip)));
     Some(img)
 }

@@ -13,7 +13,8 @@ All notable changes to this project are documented here. The format follows
 - One menu bar item instead of one per device. **Expanded** shows every device side by
   side in it (icon and percentage, with the same `~`, ⚡︎ and dimming as before);
   **Collapsed** shows one icon — battbar's glyph while all devices are fine, the lowest
-  device in red once one is at or below the low-battery threshold. Switch with
+  device's icon and percentage once one is at or below the low-battery threshold. The
+  item stays black or white like the rest of the menu bar. Switch with
   *Expand / Collapse in Menu Bar* in the menu or under Settings → Menu Bar.
 - New installations start collapsed; installations updated from 0.3 start expanded,
   so the menu bar looks as before. The saved positions of the old per-device icons are
