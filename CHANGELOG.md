@@ -25,6 +25,13 @@ All notable changes to this project are documented here. The format follows
 - Devices are ordered by type (keyboard, mouse, headset, others); *Move Left / Right*
   in a device's submenu changes the order, Settings → Menu Bar resets it.
 
+### Fixed
+
+- After *Merge With*, *Split* or *Unlink* the device disappeared from the menu bar for
+  up to a minute: the regrouped device has a new ID, and the check that holds back
+  newly appearing devices treated it as new. Devices made only of sources that were
+  already shown now stay visible.
+
 ### Added
 
 - `battbar-app --probe-menu-bar [--width N]`: a diagnostic that shows a test menu bar

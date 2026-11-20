@@ -439,6 +439,30 @@ impl NewDeviceGate {
         out
     }
 
+    /// A regrouping of devices already shown (Merge With, Split, Unlink, a learned
+    /// link) creates device IDs the gate has not seen. A device whose every source
+    /// belonged to a confirmed device in `before` is not new: confirm it at once, so it
+    /// does not vanish until the next complete poll. Returns the IDs confirmed now.
+    pub fn confirm_regrouped(&mut self, before: &[Device], after: &[Device]) -> Vec<String> {
+        let known: std::collections::HashSet<String> = before
+            .iter()
+            .filter(|d| self.confirmed.contains(&d.id))
+            .flat_map(|d| d.sources.iter().map(|s| s.full_key()))
+            .collect();
+        let mut out = vec![];
+        for d in after {
+            if self.confirmed.contains(&d.id) || d.sources.is_empty() {
+                continue;
+            }
+            if d.sources.iter().all(|s| known.contains(&s.full_key())) {
+                self.confirmed.insert(d.id.clone());
+                self.first_seen.remove(&d.id);
+                out.push(d.id.clone());
+            }
+        }
+        out
+    }
+
     /// Whether some device is waiting (the caller schedules a follow-up poll).
     pub fn pending(&self) -> bool {
         !self.first_seen.is_empty()
@@ -466,6 +490,56 @@ mod tests {
 
     fn unit(u: &str) -> IdentityKey {
         IdentityKey::HidppUnit { unit_id: u.into() }
+    }
+
+    #[test]
+    fn regrouping_shown_devices_is_not_a_new_device() {
+        let base = rep(
+            "steelseries",
+            "hid:1",
+            "Nova",
+            Transport::BaseStation,
+            Reading::ok(13, Precision::Coarse),
+        );
+        let bt = rep(
+            "bt-system",
+            "classic:a",
+            "Nova",
+            Transport::BluetoothClassic,
+            Reading::with_status(Status::Disconnected),
+        );
+        let other = rep(
+            "bt-system",
+            "classic:b",
+            "New",
+            Transport::BluetoothClassic,
+            Reading::ok(50, Precision::Exact),
+        );
+        let mut gate = NewDeviceGate::default();
+        let t0 = std::time::Instant::now();
+        let apart = merge(vec![base.clone(), bt.clone()], &MergeConfig::default());
+        assert_eq!(apart.len(), 2);
+        gate.admit(t0, &apart, true);
+        assert_eq!(gate.admit(t0 + std::time::Duration::from_secs(4), &apart, true).len(), 2);
+        // Merge With: one new ID made only of shown sources -> shown at once.
+        let cfg = MergeConfig {
+            manual_groups: vec![vec!["steelseries/hid:1".into(), "bt-system/classic:a".into()]],
+            splits: vec![],
+        };
+        let merged = merge(vec![base.clone(), bt.clone()], &cfg);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(gate.confirm_regrouped(&apart, &merged), vec![merged[0].id.clone()]);
+        assert_eq!(
+            gate.admit(t0 + std::time::Duration::from_secs(5), &merged, false),
+            vec![merged[0].id.clone()]
+        );
+        // Split back: both parts were shown before (inside the merged device).
+        assert_eq!(gate.confirm_regrouped(&merged, &apart).len(), 0, "their IDs are already confirmed");
+        // A device with a source nobody has shown yet still waits for the gate.
+        let mut cfg2 = cfg.clone();
+        cfg2.manual_groups[0].push("bt-system/classic:b".into());
+        let with_new = merge(vec![base, bt, other], &cfg2);
+        assert!(gate.confirm_regrouped(&merged, &with_new).is_empty());
     }
 
     #[test]

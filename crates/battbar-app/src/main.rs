@@ -588,7 +588,9 @@ impl App {
                 changed = true;
             }
         }
+        let before = self.devices.clone();
         self.recompute();
+        self.gate.confirm_regrouped(&before, &self.devices);
         for d in &self.devices {
             if d.reading.percent.is_some() && !self.settings.ever_reported.contains(&d.id) {
                 self.settings.ever_reported.push(d.id.clone());
@@ -766,9 +768,21 @@ impl App {
             });
         }
         self.save();
+        let before = self.devices.clone();
         self.recompute();
+        self.admit_regrouped(&before);
         self.dirty = true;
         None
+    }
+
+    /// Devices regrouped from shown ones (Merge With, Split, Unlink, learned links) stay
+    /// visible instead of waiting for the new-device gate.
+    fn admit_regrouped(&mut self, before: &[Device]) {
+        for id in self.gate.confirm_regrouped(before, &self.devices) {
+            if !self.admitted.contains(&id) {
+                self.admitted.push(id);
+            }
+        }
     }
 
     // ------------------------------------------------------------- rendering
