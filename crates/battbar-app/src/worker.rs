@@ -212,9 +212,11 @@ pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'stati
     let (tx, rx) = mpsc::channel();
     // HID hotplug (receivers, base stations, Bluetooth HID devices): poll soon.
     let hid_tx = tx.clone();
-    battbar_hid::on_hotplug(move || {
-        let _ = hid_tx.send(WorkerCmd::Hotplug("hid"));
-    });
+    if !dev_no_hotplug() {
+        battbar_hid::on_hotplug(move || {
+            let _ = hid_tx.send(WorkerCmd::Hotplug("hid"));
+        });
+    }
     let timer_tx = tx.clone();
     let headsetcontrol = settings.headsetcontrol_fallback;
     let interval = Duration::from_secs(settings.poll_interval_secs.max(10));

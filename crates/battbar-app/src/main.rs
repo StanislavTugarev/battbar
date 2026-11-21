@@ -1208,7 +1208,7 @@ impl App {
     /// Bluetooth connect/disconnect notifications → poll soon (once permission is
     /// granted: IOBluetooth blocks while the prompt is open). Main thread.
     fn watch_bluetooth(&self) {
-        if battbar_macos::connections::watching() || !battbar_macos::ble::is_authorized() {
+        if battbar_macos::connections::watching() || !battbar_macos::ble::is_authorized() || battbar_core::dev_no_hotplug() {
             return;
         }
         let tx = self.tx.clone();

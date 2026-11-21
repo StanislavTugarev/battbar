@@ -48,7 +48,26 @@ impl Rescan {
 
 impl Default for Rescan {
     fn default() -> Self {
+        // Development builds: `BATTBAR_DEV_RESCAN_SECS` shortens the safety re-scan, to
+        // try it with hotplug notifications switched off (`BATTBAR_DEV_NO_HOTPLUG`).
+        #[cfg(debug_assertions)]
+        if let Some(s) = std::env::var("BATTBAR_DEV_RESCAN_SECS").ok().and_then(|s| s.parse().ok()) {
+            return Rescan::new(Duration::from_secs(s));
+        }
         Rescan::new(SAFETY_RESCAN)
+    }
+}
+
+/// Development builds: hotplug notifications switched off (`BATTBAR_DEV_NO_HOTPLUG`), to
+/// check that the safety re-scan alone finds new devices. Always `false` in releases.
+pub fn dev_no_hotplug() -> bool {
+    #[cfg(debug_assertions)]
+    {
+        std::env::var_os("BATTBAR_DEV_NO_HOTPLUG").is_some()
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
     }
 }
 
