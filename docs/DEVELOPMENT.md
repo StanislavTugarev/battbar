@@ -126,6 +126,7 @@ the app has no repeating `NSTimer` (test `no_repeating_timers_in_the_app`).
 | HID service thread | none — sleeps in its run loop until an IOKit event or a job | 0.3 polled every 20 ms (~45 context switches/s measured); fixed in 0.4 |
 | HID hotplug (receivers, base stations, Bluetooth HID devices) | none — IOHIDManager matching/removal callbacks on the HID service thread (0.5) | — |
 | Bluetooth connections (classic, e.g. headsets) | none — IOBluetooth connect/disconnect notifications on the main thread (0.5) | — |
+| Base station headset events | none — one thread per open base blocks on its own handle; the base sends a report when its headset changes (0.5) | 0.5 before rc: a status request in every 2 s check (~1.7 context switches/s) |
 | "Not enough space" check | none — occlusion and screen-change notifications, at most one one-shot timer (1 s, tolerance 0.1 s) after a change | 0.4 rc.3 polled every 0.5 s; replaced before release |
 | Battery poll (worker) | the user's interval, 30 s – 5 min (default 60 s); GCD timer, leeway 15 % (≤ 15 s) | the batteries are read; nothing pushes battery levels for all devices |
 | Device events (worker → providers) | **2 s**, GCD timer, leeway 0.3 s | kept, see below |
@@ -143,10 +144,8 @@ leeway of 15 % of the period, so macOS can coalesce it with other wake-ups.
 **The 2 s device-event check** (kept, with reason): it drains HID++ notifications
 that hidapi has already buffered (device connected/disconnected on a receiver, battery
 or charging events) — hidapi offers no callback for them, so they can only be seen by
-asking — and, while a SteelSeries base station is open, asks the base for its status
-(one request/reply on its vendor interface): the base sends nothing when its headset
-connects, disconnects, moves to Bluetooth or starts charging. A poll follows only if
-one of those changed. Likewise, while a receiver has a slot that was disconnected at
+asking. (Base stations are not part of it: they report headset changes by themselves,
+read by a blocking listener thread, see the table.) While a receiver has a slot that was disconnected at
 the last poll, the check pings that slot (the receiver does not announce every
 connection, see SPEC "Hotplug"): the ping rides on the existing check (no timer of
 its own), the receiver answers for an absent device itself without radio (~1 ms in

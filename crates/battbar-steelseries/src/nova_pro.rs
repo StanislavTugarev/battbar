@@ -19,21 +19,14 @@ pub struct NovaProStatus {
     pub headset_on_bluetooth: bool,
 }
 
-/// What the 2 s event check compares: headset connected (and its status), on
-/// Bluetooth, charging. The battery level is left to the regular poll.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StatusKey {
-    pub headset: Status,
-    pub charging: Option<bool>,
-    pub on_bluetooth: bool,
-}
-
-pub fn status_key(s: &NovaProStatus) -> StatusKey {
-    StatusKey {
-        headset: s.headset.status,
-        charging: s.headset.charging,
-        on_bluetooth: s.headset_on_bluetooth,
-    }
+/// A report the base sends by itself when the headset changes (no request): 0x07 0xb5
+/// (connection: `b5 <byte 4> <byte 5 Bluetooth: 0 none, 2 connecting, 1 connected>
+/// <08 on, 04 off>`) and 0x07 0xb7 (`b7 <battery 0–8> <spare> <byte 15 state: 01 off,
+/// 08 on, 02 charging>`), seen on the reference base (DISCOVERY "Base station events").
+/// Other unsolicited reports (0x07 0x25 …, e.g. the volume dial) are not headset
+/// state.
+pub fn is_headset_event(r: &[u8]) -> bool {
+    r.len() >= 2 && r[0] == 0x07 && matches!(r[1], 0xb5 | 0xb7)
 }
 
 pub fn is_status_reply(r: &[u8]) -> bool {
@@ -114,20 +107,26 @@ mod tests {
         assert_eq!(s.headset.percent, None);
     }
 
-    /// The 2 s check polls only when the headset connects/disconnects, moves to or
-    /// from Bluetooth, or starts/stops charging — not for a level change.
+    /// Reports the reference base sent by itself while the headset was switched off
+    /// and on, charged, and its Bluetooth switched on and off (no request sent).
     #[test]
-    fn status_key_changes_only_for_connection_bluetooth_and_charging() {
-        let key = |h: &str| status_key(&decode(&frame(h)));
-        let online = key("06 b0 00 00 01 00 08 04 08 00 02 0a 00 00 08 08");
-        let lower = key("06 b0 00 00 01 00 05 04 08 00 02 0a 00 00 08 08");
-        let off = key("06 b0 00 00 01 00 00 08 08 00 02 0a 00 00 08 01");
-        let bt = key("06 b0 00 00 04 01 08 06 08 00 02 0a 00 00 08 08");
-        let charging = key("06 b0 00 00 01 00 03 08 08 00 02 0a 00 00 08 02");
-        assert_eq!(online, lower, "level only: no poll");
-        assert_ne!(online, off);
-        assert_ne!(online, bt);
-        assert_ne!(online, charging);
+    fn unsolicited_headset_reports_are_events() {
+        for f in [
+            "07 b7 00 08 01", // headset off
+            "07 b7 07 08 08", // on, 7/8
+            "07 b7 07 08 02", // charging
+            "07 b5 04 02 08", // Bluetooth connecting
+            "07 b5 04 01 08", // Bluetooth connected
+            "07 b5 01 00 08", // Bluetooth off
+            "07 b5 01 00 04", // headset off (connection report)
+        ] {
+            assert!(is_headset_event(&frame(f)), "{f}");
+        }
+        assert!(!is_headset_event(&frame("07 25 19")), "not headset state");
+        assert!(
+            !is_headset_event(&frame("06 b0 00 00 01 00 08 04 08 00 02 0a 00 00 08 08")),
+            "a reply to our status request is not an event"
+        );
     }
 
     #[test]

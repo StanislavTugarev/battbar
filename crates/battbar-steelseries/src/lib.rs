@@ -20,6 +20,72 @@ pub struct BaseLink {
     pub id: String,
     pub device: devicedb::DeviceDef,
     pub open: Box<dyn FnOnce() -> Result<BoxTransport, TransportError> + Send>,
+    /// A second, independent handle on the same interface for the event listener (the
+    /// base reports headset changes by itself, see [`events`]); `None` for replays.
+    pub listen: Option<Box<dyn FnOnce() -> Result<BoxTransport, TransportError> + Send>>,
+}
+
+pub mod events {
+    //! Headset events the base station sends by itself (report 0x07 0xb5/0xb7: headset
+    //! on/off, charging, Bluetooth; DISCOVERY "Base station events"). One long-lived
+    //! thread per open base blocks on its own handle (no wake-up while nothing
+    //! happens) and calls the registered callback; the app then polls. The thread
+    //! ends when the base goes away.
+    use super::BoxTransport;
+    use battbar_core::transport::TransportError;
+    use std::collections::BTreeSet;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    type Callback = Box<dyn Fn() + Send + Sync>;
+    static CALLBACK: Mutex<Option<Callback>> = Mutex::new(None);
+    /// Links with a running listener (never two for one base).
+    static LISTENING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+    /// A blocking read that never times out in practice (~24 days).
+    const FOREVER: Duration = Duration::from_millis(i32::MAX as u64);
+
+    /// Call `f` whenever a base station reports a headset change (on the listener
+    /// thread; keep it short). Without a callback no listener is started.
+    pub fn on_event(f: impl Fn() + Send + Sync + 'static) {
+        *CALLBACK.lock().unwrap() = Some(Box::new(f));
+    }
+
+    pub(crate) fn enabled() -> bool {
+        CALLBACK.lock().unwrap().is_some()
+    }
+
+    pub(crate) fn listen(id: String, open: Box<dyn FnOnce() -> Result<BoxTransport, TransportError> + Send>) -> Result<(), String> {
+        if !LISTENING.lock().unwrap().insert(id.clone()) {
+            return Ok(());
+        }
+        let started = std::thread::Builder::new().name("battbar-base-events".into()).spawn(move || {
+            if let Ok(mut t) = open() {
+                // Ends on an error: the base was unplugged.
+                while let Ok(r) = t.read(FOREVER) {
+                    if r.as_deref().is_some_and(crate::nova_pro::is_headset_event) {
+                        log(r.as_deref().unwrap_or_default());
+                        if let Some(f) = CALLBACK.lock().unwrap().as_ref() {
+                            f();
+                        }
+                    }
+                }
+            }
+            LISTENING.lock().unwrap().remove(&id);
+        });
+        started.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    #[cfg(debug_assertions)]
+    fn log(r: &[u8]) {
+        if std::env::var_os("BATTBAR_DEV_LOG_HIDPP").is_some() {
+            let t = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            eprintln!("base event {:.3}: {:02x?}", t.as_secs_f64(), &r[..r.len().min(5)]);
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    fn log(_: &[u8]) {}
 }
 
 pub trait BaseSource: Send {
@@ -44,10 +110,12 @@ impl BaseSource for HidapiBases {
                     return None;
                 }
                 let d = d.clone();
+                let second = i.clone();
                 Some(BaseLink {
                     id: i.link_id(),
                     device: d,
                     open: Box::new(move || battbar_hid::open(&i).map(|t| Box::new(t) as BoxTransport)),
+                    listen: Some(Box::new(move || battbar_hid::open(&second).map(|t| Box::new(t) as BoxTransport))),
                 })
             })
             .collect()
@@ -90,6 +158,7 @@ impl BaseSource for ReplayBases {
                         t.map(|t| Box::new(t) as BoxTransport)
                             .ok_or(TransportError::Refused("already open".into()))
                     }),
+                    listen: None,
                 }
             })
             .collect()
@@ -100,8 +169,6 @@ struct Open {
     device: devicedb::DeviceDef,
     t: BoxTransport,
     last_raw: Option<Vec<u8>>,
-    /// Headset state at the last poll or check (see `nova_pro::StatusKey`).
-    last_key: Option<nova_pro::StatusKey>,
 }
 
 pub struct SteelSeriesProvider {
@@ -161,6 +228,11 @@ impl SteelSeriesProvider {
             }
             match (c.open)() {
                 Ok(t) => {
+                    if let Some(listen) = c.listen.filter(|_| events::enabled()) {
+                        if let Err(e) = events::listen(c.id.clone(), listen) {
+                            self.errors.push(format!("{}: event listener: {e}", c.id));
+                        }
+                    }
                     let t: BoxTransport = match &self.trace {
                         Some(w) => Box::new(RecordingTransport::new(t, w.clone())),
                         None => t,
@@ -171,7 +243,6 @@ impl SteelSeriesProvider {
                             device: c.device,
                             t,
                             last_raw: None,
-                            last_key: None,
                         },
                     );
                 }
@@ -211,7 +282,6 @@ impl BatteryProvider for SteelSeriesProvider {
                 Ok(Some(r)) => {
                     let s = nova_pro::decode(&r);
                     o.last_raw = Some(r);
-                    o.last_key = Some(nova_pro::status_key(&s));
                     let hints = if s.headset_on_bluetooth && !o.device.bt_name_patterns.is_empty() {
                         vec![MergeHint::BluetoothCompanion {
                             name_patterns: o.device.bt_name_patterns.clone(),
@@ -257,29 +327,8 @@ impl BatteryProvider for SteelSeriesProvider {
     }
 
     fn check_events(&mut self) -> bool {
-        // The headset's state on each open base (no notification exists for it): poll
-        // when it connected/disconnected, moved to/from Bluetooth or started/stopped
-        // charging — e.g. a headset that reaches a just-plugged base 10–20 s later.
-        let mut changed = false;
-        for o in self.links.values_mut() {
-            if let Ok(Some(r)) = Self::query(o) {
-                let key = nova_pro::status_key(&nova_pro::decode(&r));
-                // Development builds: `BATTBAR_DEV_LOG_HIDPP` also prints headset state
-                // changes on the base with their time (UNIX seconds).
-                #[cfg(debug_assertions)]
-                if std::env::var_os("BATTBAR_DEV_LOG_HIDPP").is_some() && o.last_key != Some(key) {
-                    let t = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default();
-                    eprintln!("base status {:.3}: {key:?}", t.as_secs_f64());
-                }
-                changed |= o.last_key.is_some_and(|k| k != key);
-                o.last_key = Some(key);
-            }
-        }
-        if changed {
-            return true;
-        }
+        // Headset changes arrive as events from the base itself (see `events`), not
+        // through this check.
         // Hotplug notifications trigger polls; a re-scan only as a rare safety net.
         if !self.rescan.due(std::time::Instant::now()) {
             return false;

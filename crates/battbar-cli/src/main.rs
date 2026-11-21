@@ -63,6 +63,14 @@ enum Cmd {
         #[arg(long, default_value_t = 30)]
         checks: u32,
     },
+    /// Listen to a base station (development): open every vendor HID interface of the
+    /// SteelSeries device (VID 0x1038) and print each incoming report with its time for
+    /// N seconds. Sends nothing (shows whether the base reports headset changes itself).
+    #[command(hide = true)]
+    DebugBaseListen {
+        #[arg(long, default_value_t = 180)]
+        seconds: u64,
+    },
     /// Stress test (development): rebuild all providers N times and poll at once each
     /// time, to catch objects bound to threads that exit. Read-only.
     #[command(hide = true)]
@@ -420,6 +428,7 @@ fn main() {
             eprintln!("ok: {rounds} rebuilds, bluetooth={bt}");
             std::process::exit(0);
         }
+        Cmd::DebugBaseListen { seconds } => base_listen(*seconds),
         Cmd::DebugCheckCost { checks } => {
             check_cost(&db, *checks);
         }
@@ -646,6 +655,56 @@ fn main() {
             std::process::exit(0);
         }
     }
+}
+
+fn base_listen(seconds: u64) {
+    use battbar_core::transport::FrameTransport;
+    let ifaces: Vec<_> = battbar_hid::enumerate()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| i.vendor_id == 0x1038)
+        .collect();
+    let start = std::time::Instant::now();
+    let deadline = start + Duration::from_secs(seconds);
+    let mut threads = vec![];
+    for i in ifaces {
+        let name = format!("{} {:?}", i.link_id(), i.collections);
+        match battbar_hid::open(&i) {
+            Ok(mut t) => {
+                println!("listening: {name}");
+                threads.push(std::thread::spawn(move || {
+                    while std::time::Instant::now() < deadline {
+                        match t.read(Duration::from_millis(500)) {
+                            Ok(Some(f)) => {
+                                let end = f.iter().rposition(|b| *b != 0).map_or(1, |p| p + 1);
+                                let clock = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default();
+                                println!(
+                                    "[{:>7.2}s | {:.3}] {} ({} bytes): {}",
+                                    start.elapsed().as_secs_f64(),
+                                    clock.as_secs_f64(),
+                                    t.info().link,
+                                    f.len(),
+                                    battbar_core::transport::to_hex(&f[..end])
+                                );
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                println!("{}: {e}", t.info().link);
+                                break;
+                            }
+                        }
+                    }
+                }));
+            }
+            Err(e) => println!("not opened: {name}: {e}"),
+        }
+    }
+    for t in threads {
+        let _ = t.join();
+    }
+    println!("done after {:.0} s", start.elapsed().as_secs_f64());
 }
 
 /// CPU time of this thread (s) and context switches of this process.

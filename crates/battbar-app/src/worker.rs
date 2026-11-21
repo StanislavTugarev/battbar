@@ -216,6 +216,12 @@ pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'stati
         battbar_hid::on_hotplug(move || {
             let _ = hid_tx.send(WorkerCmd::Hotplug("hid"));
         });
+        // Headset changes reported by a base station itself (before the first poll
+        // opens the bases, so their listeners start).
+        let base_tx = tx.clone();
+        battbar_steelseries::events::on_event(move || {
+            let _ = base_tx.send(WorkerCmd::Hotplug("base"));
+        });
     }
     let timer_tx = tx.clone();
     let headsetcontrol = settings.headsetcontrol_fallback;

@@ -472,9 +472,33 @@ The re-scan runs at the first 2 s check at least 20 s after the last poll (here 
 after the unplug poll), so it finds a missed receiver within 20–22 s; in release builds
 the interval is 5 minutes and the minute poll scans links anyway.
 
-### Base station: headset state in the 2 s check
+### Base station events
 
-Development log of the base's headset state: after plugging the base in (link open
+Listening to the base's vendor interface (`battbar debug-base-listen`, interface 4,
+collections 0xFFC0/0xFF00; nothing sent, battbar not running) while the headset was
+switched off and on, charged, and its Bluetooth switched on and off: the base sends a
+report by itself for every change, and nothing in between (10 minutes).
+
+| Clock | Report | Meaning (fields as in the status reply) |
+|---|---|---|
+| 17:37:33.62 | `07 b5 01 00 04` + `07 b7 00 08 01` | headset off (byte 15 = 01) |
+| 17:37:45.95 | `07 b5 01 00 08` + `07 b7 07 08 08` | headset on, battery 7/8 |
+| 17:37:50.96 | `07 b7 07 08 02` | charging (byte 15 = 02) |
+| 17:38:17.96 | `07 b7 07 08 08` | charging stopped |
+| 17:38:20.26 / 21.83 | `07 b5 04 02 08` / `07 b5 04 01 08` | Bluetooth connecting / connected (bytes 4–5) |
+| 17:38:32.95 | `07 b5 01 00 08` | Bluetooth off |
+| 17:37:08.02 | `07 25 19` | not headset state (probably the volume dial); ignored |
+
+So `0x07 0xb5` = `<byte 4> <byte 5: Bluetooth 0 none / 2 connecting / 1 connected>
+<08 on / 04 off>` and `0x07 0xb7` = `<battery 0–8> <spare> <state: 01 off / 08 on / 02
+charging>`. Since then battbar reads these reports on a second handle in a blocking
+thread and no longer asks the base for its status every 2 s. In the running app (the
+provider's own handle open at the same time) every report arrived on the listener's
+handle and gave one poll (17:43–17:44: Bluetooth connecting/connected/off, headset
+off/on, charging on/off; a pair of reports 0.1 s apart gave one poll); the poll
+finished 0.6–1.2 s after the report.
+
+Before (status request in the 2 s check), development log of the base's headset state: after plugging the base in (link open
 17:11:14, headset "Disconnected"), the headset reached it at 17:11:18.86 and the poll
 showing it finished at 17:11:20 (1.1 s; the poll itself takes ~1 s). Bluetooth on/off
 on the headset: base state changed at 17:10:46.44 / 17:10:51.55, polls at 17:10:47 /
@@ -498,7 +522,7 @@ Seconds from Enter to the new state. "now" = 077c81b (full run; receiver plug al
 | Receiver unplugged | 0.8 | 0.0 | 0.0 | 4.3³ | HID removal, poll 0.3 s later |
 | Receiver plugged in | 69.9 | 21.0 | 62.5 | 7.0³ (2.4 / 1.4 / 2.9) | link open +4 s, ping found the mouse 2.3 s later |
 | Base unplugged | 0.6 | already | 0.0 | 5.2³ | HID removal, poll 0.3 s later |
-| Base plugged in | 64.1 | 20.4 | 5.7 | 10.4³ | link open +4 s, headset on line +8.9 s, shown +10.1 s |
+| Base plugged in | 64.1 | 20.4 | 5.7 | 10.4³ | link open +4 s, headset on line +8.9 s, shown +10.1 s (2 s check; since then by the base's own report, see above) |
 
 ¹ 0.4 polled every 6–10 s, so a scenario could land right after a poll; not comparable.
 ² Shown before Enter was pressed. ³ The log shows the USB event itself 4–5 s after

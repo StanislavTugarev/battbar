@@ -431,9 +431,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   own: GATT sessions are counted per peripheral and the last one to close cancels the
   app's connection (also after a failed attempt); peripherals are only taken from the
   system's connected list.
-- **SteelSeries base stations**: the 2 s event check asks each open base for its status
-  and polls when the headset connected/disconnected, moved to/from Bluetooth or
-  started/stopped charging.
+- **SteelSeries base stations**: the base reports headset changes by itself (report
+  0x07 0xb5: connection and Bluetooth; 0x07 0xb7: battery, on/off, charging). One
+  long-lived thread per open base blocks on its own handle of the vendor interface
+  (no wake-up while nothing happens) and asks for a poll on each such report; it ends
+  when the base is unplugged. The 2 s check asks the base nothing.
 - The worker polls **0.3 s** after such a notification (a burst gives one poll); the
   poll log names the reason (`interval`, `hid`, `bluetooth`, `device event`,
   `follow-up`, `refresh`).
