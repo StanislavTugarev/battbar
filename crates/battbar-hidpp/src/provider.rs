@@ -166,6 +166,15 @@ impl HidppProvider {
             }
             ids.sort();
             let open: Vec<String> = self.links.keys().cloned().collect();
+            #[cfg(debug_assertions)]
+            if std::env::var_os("BATTBAR_DEV_LOG_HIDPP").is_some() {
+                eprintln!(
+                    "hidpp safety re-scan: present={} open={} changed={}",
+                    ids.len(),
+                    open.len(),
+                    ids != open
+                );
+            }
             any |= ids != open;
         }
         any

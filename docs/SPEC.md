@@ -64,8 +64,9 @@ Keyboard and headset are the test devices for both transports. Measured details 
     service** (`00010000-0000-1000-8000-011F2000046D`, characteristic
     `00010001-0000-1000-8000-011F2000046D`) via CoreBluetooth (`objc2`).
   - System-known battery: CoreBluetooth **BLE Battery Service** (0x180F / 0x2A19) for
-    BLE devices; **IOBluetooth** for classic Bluetooth audio;
-    `system_profiler SPBluetoothDataType -json` only as a fallback for BLE.
+    BLE devices; **IOBluetooth** for classic Bluetooth audio. No `system_profiler`
+    (removed in 0.5: on the reference devices it carried nothing the other sources
+    lack, and its cached output kept switched-off devices; see DISCOVERY.md).
   - `hidapi` is used only for USB devices (receivers, base stations, wired devices).
 - **Code signing**: a stable self-signed code-signing certificate instead of ad-hoc
   signatures, so TCC permissions (Bluetooth) survive rebuilds and updates. Locally the
@@ -87,7 +88,7 @@ Cargo workspace:
 | `battbar-core` | Types (`Device`, components, `Reading { percent, charging, status, precision }`, `status ∈ ok \| asleep \| disconnected \| error`, `precision ∈ exact \| coarse \| approximate`), `BatteryProvider` trait, source merging, device database loading, transport abstraction |
 | `battbar-hidpp` | Logitech HID++ 2.0 provider on all transports: Unifying, Bolt, Lightspeed, direct USB, **Bluetooth via GATT** |
 | `battbar-steelseries` | SteelSeries provider (native port of HeadsetControl protocols) + optional `headsetcontrol` fallback |
-| `battbar-bt-system` | Battery that macOS already knows for Bluetooth devices: BLE Battery Service (CoreBluetooth), classic audio (IOBluetooth), `system_profiler` fallback. Speaks no vendor protocol |
+| `battbar-bt-system` | Battery that macOS already knows for Bluetooth devices: BLE Battery Service (CoreBluetooth), classic audio (IOBluetooth). Speaks no vendor protocol |
 | `battbar-macos` | Thin `objc2` bindings: CoreBluetooth central (retrieve-connected only), IOBluetooth paired devices, notifications, SMAppService |
 | `battbar-cli` | `battbar probe / dump / record` |
 | `battbar-app` | Menu bar app; bundles the CLI |
@@ -164,9 +165,9 @@ Lightspeed to Bluetooth). The core merges such sources into one device and one i
 
   | Device class | Sources |
   |---|---|
-  | Logitech over BLE | HID++ via GATT, BLE Battery Service, `system_profiler` (only if CoreBluetooth is unavailable) |
-  | Other BLE | BLE Battery Service, `system_profiler` (same condition) |
-  | Classic Bluetooth audio | IOBluetooth only (`system_profiler` does not carry it) |
+  | Logitech over BLE | HID++ via GATT, BLE Battery Service |
+  | Other BLE | BLE Battery Service (kind "other" unless another source knows it) |
+  | Classic Bluetooth audio | IOBluetooth only |
 
 - **Learned headset ↔ Bluetooth link.** The live companion merge (base flag +
   `bt_name_patterns`, above) is remembered so the headset stays one device when its
@@ -417,8 +418,7 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   writes stay off in diagnostics (`dump`, `record`).
 - **Bluetooth LE**: the system decides what is connected. A device that is not in
   `retrieveConnectedPeripherals` is not shown with a value from any source (Battery
-  Service, HID++ over GATT); the cached `system_profiler` fallback counts only devices
-  IOBluetooth reports connected at that poll. battbar never keeps a connection of its
+  Service, HID++ over GATT). battbar never keeps a connection of its
   own: GATT sessions are counted per peripheral and the last one to close cancels the
   app's connection (also after a failed attempt); peripherals are only taken from the
   system's connected list.

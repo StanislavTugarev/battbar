@@ -123,7 +123,7 @@ the app has no repeating `NSTimer` (test `no_repeating_timers_in_the_app`).
 | Safety re-scans (HID links, base stations, Bluetooth connections) | 5 min, counted from the last poll | catches a missed hotplug notification (`Rescan`, test `a_missed_hotplug_is_caught_by_the_safety_rescan_only`) |
 | Follow-up polls (hotplug debounce 0.3 s, new device settling, learned link) | one-shot, 0.3–4 s after the event | — |
 | Update check | once a day, only if turned on | — |
-| Child processes (`system_profiler`, `headsetcontrol`, the classic-battery helper) | wait in 10–50 ms steps, **only while one runs during a poll** (≤ 5 s) | `std::process::Child` has no wait-with-timeout; bounded, never while idle |
+| Child processes (`headsetcontrol`, the classic-battery helper) | wait in 10–50 ms steps, **only while one runs during a poll** (≤ 5 s) | `std::process::Child` has no wait-with-timeout; bounded, never while idle |
 | HID++ / GATT request timeouts (1.5–2 s) | one wait per request, only during a poll | — |
 | `--probe-menu-bar`, `battbar debug-events` | 0.5 s / run loop for N s | diagnostic tools, not the app |
 

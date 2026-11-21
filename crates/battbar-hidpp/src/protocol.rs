@@ -94,6 +94,15 @@ impl<T: FrameTransport> Channel<T> {
     }
 
     fn push_notification(&mut self, f: Vec<u8>) {
+        // Development builds: `BATTBAR_DEV_LOG_HIDPP` prints every notification with
+        // its arrival time (UNIX seconds), to follow a receiver's connection events.
+        #[cfg(debug_assertions)]
+        if std::env::var_os("BATTBAR_DEV_LOG_HIDPP").is_some() {
+            let t = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            eprintln!("hidpp note {:.3}: {:02x?}", t.as_secs_f64(), &f[..f.len().min(7)]);
+        }
         if self.notifications.len() >= MAX_NOTIFICATIONS {
             self.notifications.remove(0);
         }

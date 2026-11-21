@@ -27,6 +27,11 @@ All notable changes to this project are documented here. The format follows
   asked to announce its connected devices, and the base station's headset state is
   part of the 2 s check.
 
+### Removed
+
+- The `system_profiler` fallback for Bluetooth LE batteries: CoreBluetooth (Battery
+  Service, HID++ over GATT) covers the same devices, without the 5-minute cache.
+
 ### Changed
 
 - Fewer wake-ups while idle (between polls about 1.8 instead of 9 per second on the

@@ -633,8 +633,14 @@ impl App {
                     .iter()
                     .map(|c| format!(" {:?}={}", c.kind, ui::status_text(&c.reading)))
                     .collect::<String>();
+                let sources = d
+                    .sources
+                    .iter()
+                    .map(|s| format!("{}={}", s.source, ui::status_text(&s.reading)))
+                    .collect::<Vec<_>>()
+                    .join("; ");
                 eprintln!(
-                    "  {} [{:?}] {} via {:?}{spare}",
+                    "  {} [{:?}] {} via {:?}{spare} sources: {sources}",
                     d.name,
                     d.kind,
                     ui::status_text(&d.reading),
