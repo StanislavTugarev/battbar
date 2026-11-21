@@ -13,6 +13,7 @@ pub mod model;
 pub mod provider;
 pub mod settings;
 pub mod transport;
+pub mod version;
 
 pub use charge::{Estimate, SettlingTracker};
 pub use devicedb::DeviceDb;

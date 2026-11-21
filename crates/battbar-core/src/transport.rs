@@ -116,7 +116,7 @@ impl TraceWriter {
         }
         self.headers.push(info.link.clone());
         self.line(&TraceLine::Header {
-            battbar: env!("CARGO_PKG_VERSION").into(),
+            battbar: crate::version::FULL.into(),
             info: info.clone(),
         });
     }

@@ -30,13 +30,20 @@ else
 fi
 
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+# Full version with -rc.N (release workflow: from the tag); the binaries were built
+# with the same BATTBAR_RELEASE_VERSION.
+FULL_VERSION="${BATTBAR_RELEASE_VERSION:-$VERSION}"
+case "$FULL_VERSION" in
+  "$VERSION" | "$VERSION"-rc.[0-9]*) ;;
+  *) echo "BATTBAR_RELEASE_VERSION=$FULL_VERSION does not match Cargo.toml $VERSION" >&2; exit 1 ;;
+esac
 APP=target/battbar.app
 mkdir -p target
 STAGE=$(mktemp -d target/battbar.app.XXXXXX)
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources"
 cp "$BIN/battbar-app" "$STAGE/Contents/MacOS/battbar-app"
 cp "$BIN/battbar" "$STAGE/Contents/MacOS/battbar"
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" -e "s/@BUNDLE_NAME@/$BUNDLE_NAME/g" crates/battbar-app/Info.plist > "$STAGE/Contents/Info.plist"
+sed -e "s/@VERSION@/$VERSION/g" -e "s/@FULL_VERSION@/$FULL_VERSION/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" -e "s/@BUNDLE_NAME@/$BUNDLE_NAME/g" crates/battbar-app/Info.plist > "$STAGE/Contents/Info.plist"
 cp LICENSE NOTICE "$STAGE/Contents/Resources/"
 # App icon and menu bar template image (built by scripts/build-icon.sh, committed).
 cp crates/battbar-app/resources/AppIcon.icns crates/battbar-app/resources/MenuBarIcon.png \
@@ -64,4 +71,4 @@ rm -rf "$APP.old"
 if [ -d "$APP" ]; then mv "$APP" "$APP.old"; fi
 mv "$STAGE" "$APP"
 rm -rf "$APP.old"
-echo "Built $APP ($VERSION, $BUNDLE_ID, signed with: $SIGN)"
+echo "Built $APP ($FULL_VERSION, $BUNDLE_ID, signed with: $SIGN)"

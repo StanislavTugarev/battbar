@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Release candidates know their full version (e.g. `0.5.0-rc.1`): shown at the bottom
+  of the menu, by `battbar --version` and in `battbar dump`. A candidate offers the
+  final release as an update once it is out (before, both counted as `0.5.0`).
+
 ## [0.4.0] - 2026-11-21
 
 ### Changed

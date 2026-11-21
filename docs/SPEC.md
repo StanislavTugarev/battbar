@@ -336,7 +336,9 @@ reports its status for bug reports.
   - Only `tag_name`, `prerelease` and `draft` are read; drafts and pre-releases are
     ignored. `tag_name` must match `^v\d+\.\d+\.\d+$` exactly (ASCII digits, at most
     32 bytes, no whitespace or other characters); anything else fails the check and
-    nothing is shown. Compared by semver with the running version. The release page URL
+    nothing is shown. Compared by semver with the running **full** version (with
+    `-rc.N` for a release candidate build, `battbar_core::version::FULL`), so a
+    candidate sees its final release as an update (`0.4.0-rc.2 < 0.4.0`). The release page URL
     is built from the version, never taken from the response.
   - Newer version → menu item "Update available: vX.Y.Z…": Homebrew install (a
     `Caskroom/battbar` directory under `$HOMEBREW_PREFIX` if set, `/opt/homebrew` or

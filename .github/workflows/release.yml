@@ -43,6 +43,9 @@ jobs:
         run: cargo test --workspace
 
       - name: Build universal binaries
+        env:
+          # Compiled in (battbar-core build.rs): menus, --version, dump, update check.
+          BATTBAR_RELEASE_VERSION: ${{ steps.version.outputs.RELEASE_VERSION }}
         run: |
           for t in aarch64-apple-darwin x86_64-apple-darwin; do
             cargo build --release --target "$t" -p battbar-app -p battbar-cli
@@ -65,12 +68,15 @@ jobs:
         run: scripts/ci-import-cert.sh
       - name: Bundle and sign
         env:
+          BATTBAR_RELEASE_VERSION: ${{ steps.version.outputs.RELEASE_VERSION }}
           BATTBAR_BIN_DIR: target/universal
           BATTBAR_SIGN_IDENTITY: battbar Release
           BATTBAR_REQUIRE_IDENTITY: "1"
         run: scripts/bundle.sh
       - name: Signed by the pinned release certificate
         run: scripts/check-release-signature.sh target/battbar.app
+      - name: Version in the bundle matches the tag
+        run: scripts/check-bundle-version.sh target/battbar.app "${{ steps.version.outputs.RELEASE_VERSION }}"
 
       - name: Package (zip for Homebrew, disk image for manual installs)
         run: |

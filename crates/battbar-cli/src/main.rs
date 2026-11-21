@@ -12,7 +12,7 @@ use std::time::Duration;
 #[derive(Parser)]
 #[command(
     name = "battbar",
-    version,
+    version = battbar_core::version::FULL,
     about = "Battery of wireless mice, keyboards and headsets (receivers, base stations, Bluetooth)"
 )]
 struct Cli {
@@ -324,7 +324,7 @@ fn dump_report(bt: bool, db_sources: &[String], diags: Vec<(&'static str, serde_
         })
         .collect();
     json!({
-        "battbar": env!("CARGO_PKG_VERSION"),
+        "battbar": battbar_core::version::FULL,
         "os": {"macos": os_version(), "arch": std::env::consts::ARCH},
         "device_database": db,
         "bluetooth_enabled": bt,
@@ -378,7 +378,7 @@ fn main() {
             let res = engine.poll(Duration::from_secs(*timeout));
             let devices = merged(res.reports, &settings, &db);
             if *json {
-                let out = json!({"battbar": env!("CARGO_PKG_VERSION"), "devices": devices, "timed_out": res.timed_out});
+                let out = json!({"battbar": battbar_core::version::FULL, "devices": devices, "timed_out": res.timed_out});
                 println!("{}", serde_json::to_string_pretty(&out).unwrap());
             } else {
                 print_devices(&devices);

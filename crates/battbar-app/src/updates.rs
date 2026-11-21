@@ -60,7 +60,7 @@ impl Version {
     }
 
     pub fn current() -> Version {
-        Version::parse(env!("CARGO_PKG_VERSION")).expect("crate version is semver")
+        Version::parse(battbar_core::version::FULL).expect("build version is semver")
     }
 
     pub fn is_prerelease(&self) -> bool {
@@ -186,7 +186,7 @@ pub struct Curl;
 impl Curl {
     /// Exact arguments, kept in one place so the documentation can quote them.
     pub fn args(url: &str) -> Vec<String> {
-        let ua = format!("battbar/{}", env!("CARGO_PKG_VERSION"));
+        let ua = format!("battbar/{}", battbar_core::version::FULL);
         [
             "-q", // must be first: ignore ~/.curlrc
             "--silent",
@@ -432,6 +432,33 @@ mod tests {
             Outcome::Failed(_)
         ));
         assert_eq!(s.next_update_check, Some(100 + 3_600));
+    }
+
+    /// A release candidate sees the final release (and later ones) as an update, and an
+    /// older candidate a newer one; a release never offers a candidate (`/releases/latest`
+    /// returns releases only, and their tags must be X.Y.Z).
+    #[test]
+    fn release_candidates_and_releases() {
+        let v = |s| Version::parse(s).unwrap();
+        assert!(v("0.4.0-rc.2") < v("0.4.0"));
+        assert!(v("0.4.0-rc.1") < v("0.4.0-rc.2"));
+        assert!(v("0.4.0-rc.9") < v("0.4.0-rc.10"));
+        assert!(v("0.4.0") < v("0.4.1-rc.1"));
+        assert!(v("0.4.0-rc.4") < v("0.5.0-rc.1"));
+        let found = |latest: &str| Settings {
+            check_for_updates: true,
+            available_update: Some(latest.into()),
+            ..Default::default()
+        };
+        // Running 0.4.0-rc.2, 0.4.0 is out: update.
+        assert_eq!(available(&found("0.4.0"), &v("0.4.0-rc.2")), Some(v("0.4.0")));
+        // Running the release itself, or a candidate of the next one: nothing.
+        assert_eq!(available(&found("0.4.0"), &v("0.4.0")), None);
+        assert_eq!(available(&found("0.4.0"), &v("0.4.1-rc.1")), None);
+        // Running an old candidate, a later release is out.
+        assert_eq!(available(&found("0.5.0"), &v("0.4.0-rc.4")), Some(v("0.5.0")));
+        // The running version comes from the build (with -rc.N when built from such a tag).
+        assert_eq!(Version::current().to_string(), battbar_core::version::FULL);
     }
 
     #[test]

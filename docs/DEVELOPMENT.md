@@ -254,6 +254,18 @@ release certificate and lists it in `SHA256SUMS`.
 Tags: `vX.Y.Z` for releases, `vX.Y.Z-rc.N` for pre-releases. `X.Y.Z` must equal
 `version` in the workspace `Cargo.toml` (checked by `scripts/release-version.sh`).
 
+Every build knows its **full version** with the suffix: the workflow sets
+`BATTBAR_RELEASE_VERSION` (from the tag) for building and bundling; `battbar-core`'s
+build.rs compiles it in (`battbar_core::version::FULL`; it must be `X.Y.Z` or
+`X.Y.Z-rc.N` with the crate's `X.Y.Z`, otherwise the build fails) and `scripts/bundle.sh`
+writes it to the `BattbarVersion` key of Info.plist. `CFBundleShortVersionString` and
+`CFBundleVersion` stay `X.Y.Z`. The menu (line above Quit), `battbar --version`,
+`battbar-app --version`, `battbar dump` and traces show it, and the update check
+compares with it. The step *Version in the bundle matches the tag*
+(`scripts/check-bundle-version.sh`) fails the release unless the plist key and both
+binaries report the tag's version exactly. Local builds without the variable are
+`X.Y.Z`; try a candidate build with `BATTBAR_RELEASE_VERSION=X.Y.Z-rc.99 scripts/bundle.sh`.
+
 - **Pre-release** (`v0.1.0-rc.1`): GitHub release marked *pre-release*, assets
   `battbar-0.1.0-rc.1.zip` + `SHA256SUMS`; notes from the `[0.1.0]` CHANGELOG section if
   it exists; the Homebrew tap is **not** updated.

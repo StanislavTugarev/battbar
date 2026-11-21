@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-app"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "battbar-bt-system",
  "battbar-core",
@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-bt-system"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "battbar-core",
  "battbar-macos",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "battbar-bt-system",
  "battbar-core",
@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "hmac",
  "serde",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-hid"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "battbar-core",
  "hidapi",
@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-hidpp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "battbar-core",
  "battbar-hid",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-macos"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dispatch2",
  "libc",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "battbar-steelseries"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "battbar-core",
  "battbar-hid",

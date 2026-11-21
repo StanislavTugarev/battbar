@@ -98,7 +98,8 @@ Custom → Releases**), or turn on **Settings → Check for Updates** in the bat
 latest release (see [Privacy](#privacy) for exactly what is sent); when there is a newer
 one, the menu shows *Update available: vX.Y.Z* — with the `brew upgrade` command if
 battbar was installed with Homebrew, otherwise it opens the release page — and you get
-one notification per version. Pre-releases are ignored.
+one notification per version. Pre-releases are never offered; if you run one, the
+final release is offered once it is out.
 
 ## Using it
 

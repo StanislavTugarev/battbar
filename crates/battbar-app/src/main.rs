@@ -1100,6 +1100,7 @@ impl App {
             );
         }
         self.separator(&menu);
+        self.add(&menu, &format!("battbar {}", battbar_core::version::FULL), None, false, "");
         self.add(&menu, "Quit battbar", Some(Action::Quit), false, "q");
         menu
     }
@@ -1422,6 +1423,10 @@ fn render_bar_preview(dir: &std::path::Path) {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("battbar {}", battbar_core::version::FULL);
+        return;
+    }
     // Used by the Homebrew cask on uninstall: remove the login item, no UI.
     if std::env::args().any(|a| a == "--unregister-login-item") {
         if matches!(login::status(), login::Status::Enabled | login::Status::RequiresApproval) {
