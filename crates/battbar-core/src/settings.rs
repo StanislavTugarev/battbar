@@ -14,6 +14,13 @@ pub fn set_config_dir(dir: PathBuf) {
 }
 
 /// `~/.config/battbar` (release) or the directory set with [`set_config_dir`].
+static SAVES_WRITTEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// How many times this process wrote the settings file (tests, diagnostics).
+pub fn saves_written() -> u64 {
+    SAVES_WRITTEN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub fn config_dir() -> Option<PathBuf> {
     if let Some(d) = CONFIG_DIR.read().unwrap().clone() {
         return Some(d);
@@ -217,13 +224,19 @@ impl Settings {
         s
     }
 
-    /// Atomic write (temp file + rename), readable by the owner only.
+    /// Atomic write (temp file + rename), readable by the owner only. Nothing is written
+    /// when the file already holds exactly this content (callers save after anything
+    /// that might have changed; the disk sees only real changes).
     pub fn save(&self) -> std::io::Result<()> {
         let Some(p) = Self::path() else { return Ok(()) };
+        let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        if std::fs::read_to_string(&p).is_ok_and(|cur| cur == text) {
+            return Ok(());
+        }
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        SAVES_WRITTEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let tmp = p.with_extension("toml.tmp");
         std::fs::write(&tmp, text)?;
         #[cfg(unix)]

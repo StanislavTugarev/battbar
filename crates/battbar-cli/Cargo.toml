@@ -20,6 +20,7 @@ battbar-bt-system = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { version = "4", features = ["derive"] }
+libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 battbar-macos = { workspace = true }

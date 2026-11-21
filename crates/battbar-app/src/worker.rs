@@ -255,11 +255,13 @@ pub fn spawn(settings: &Settings, on_update: impl Fn(PollUpdate) + Send + 'stati
                 let res = engine.poll(POLL_DEADLINE);
                 let learned = learner.observe(Instant::now(), &res.reports);
                 sched.polled(Instant::now(), learner.wants_followup());
+                // CoreBluetooth call on this thread: in its own autorelease pool.
+                let bt_authorization = battbar_core::objc_pool::with_pool(battbar_macos::ble::authorization);
                 on_update(PollUpdate {
                     reports: res.reports,
                     learned,
                     timed_out: res.timed_out,
-                    bt_authorization: battbar_macos::ble::authorization(),
+                    bt_authorization,
                     reason,
                 });
             }

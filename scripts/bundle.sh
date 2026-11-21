@@ -3,6 +3,9 @@
 # Build target/battbar.app (menu bar app + CLI) and sign it.
 #
 # Locally:  scripts/bundle.sh                 debug build of the host architecture
+#           BATTBAR_LOCAL_RELEASE=1 scripts/bundle.sh
+#                                             optimized build, still the development
+#                                             bundle ID (soak tests, measurements)
 # In CI:    BATTBAR_BIN_DIR=target/universal  use prebuilt (release, universal) binaries
 #
 # Release and universal builds are made only in CI (.github/workflows/release.yml).
@@ -22,6 +25,11 @@ if [ -n "${BATTBAR_BIN_DIR:-}" ]; then
   BIN="$BATTBAR_BIN_DIR"
   BUNDLE_ID=io.github.battbar
   BUNDLE_NAME=battbar
+elif [ "${BATTBAR_LOCAL_RELEASE:-0}" = "1" ]; then
+  cargo build --release -p battbar-app -p battbar-cli
+  BIN=target/release
+  BUNDLE_ID=io.github.battbar.dev
+  BUNDLE_NAME="battbar Dev"
 else
   cargo build -p battbar-app -p battbar-cli
   BIN=target/debug

@@ -10,6 +10,7 @@ pub mod ids;
 pub mod learner;
 pub mod merge;
 pub mod model;
+pub mod objc_pool;
 pub mod provider;
 pub mod settings;
 pub mod transport;

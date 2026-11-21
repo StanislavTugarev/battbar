@@ -140,11 +140,13 @@ impl Engine {
                     .name(format!("battbar-{name}"))
                     .spawn(move || {
                         while let Ok(cmd) = crx.recv() {
-                            let reply = match cmd {
+                            // Providers call CoreBluetooth/IOBluetooth: one autorelease
+                            // pool per request (see `objc_pool`).
+                            let reply = crate::objc_pool::with_pool(|| match cmd {
                                 Cmd::Poll => Reply::Reports(p.poll()),
                                 Cmd::Diagnostics => Reply::Diagnostics(p.diagnostics()),
                                 Cmd::CheckEvents => Reply::Events(p.check_events()),
-                            };
+                            });
                             if rtx.send(reply).is_err() {
                                 break;
                             }

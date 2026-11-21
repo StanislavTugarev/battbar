@@ -54,6 +54,15 @@ enum Cmd {
         #[arg(long, default_value_t = 30)]
         seconds: u64,
     },
+    /// Cost of the 2 s event check (development): poll the HID++ receivers and the
+    /// SteelSeries base stations once, then run each provider's event check every 2 s
+    /// for N rounds on this thread and print CPU time, context switches and wall time
+    /// per check. USB only (no Bluetooth). Read-only.
+    #[command(hide = true)]
+    DebugCheckCost {
+        #[arg(long, default_value_t = 30)]
+        checks: u32,
+    },
     /// Stress test (development): rebuild all providers N times and poll at once each
     /// time, to catch objects bound to threads that exit. Read-only.
     #[command(hide = true)]
@@ -411,6 +420,9 @@ fn main() {
             eprintln!("ok: {rounds} rebuilds, bluetooth={bt}");
             std::process::exit(0);
         }
+        Cmd::DebugCheckCost { checks } => {
+            check_cost(&db, *checks);
+        }
         Cmd::DebugEvents { seconds } => {
             let bt = bluetooth_available(&cli);
             let start = std::time::Instant::now();
@@ -633,6 +645,53 @@ fn main() {
             eprintln!("Recorded vendor-interface traffic to {}", out.display());
             std::process::exit(0);
         }
+    }
+}
+
+/// CPU time of this thread (s) and context switches of this process.
+fn usage_now() -> (f64, i64) {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    // SAFETY: plain libc calls filling the structs passed in.
+    unsafe {
+        libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts);
+        libc::getrusage(libc::RUSAGE_SELF, &mut ru);
+    }
+    (ts.tv_sec as f64 + ts.tv_nsec as f64 / 1e9, ru.ru_nvcsw + ru.ru_nivcsw)
+}
+
+fn check_cost(db: &Arc<DeviceDb>, checks: u32) {
+    let hidpp = battbar_hidpp::HidppProvider::new(db.clone(), vec![Box::new(battbar_hidpp::HidapiLinks::default())]).read_only();
+    let mut ss = battbar_steelseries::SteelSeriesProvider::new(db.clone(), vec![Box::new(battbar_steelseries::HidapiBases)]);
+    ss.set_headsetcontrol(false);
+    let provs: Vec<Box<dyn BatteryProvider>> = vec![Box::new(hidpp), Box::new(ss)];
+    for mut p in provs {
+        let reports = p.poll();
+        println!("{}: {} device(s) after the poll", p.name(), reports.len());
+        for r in &reports {
+            println!("  {} [{:?}] {:?}", r.name, r.kind, r.reading.status);
+        }
+        let (mut cpu, mut csw, mut wall, mut events, mut max_cpu) = (0.0, 0i64, 0.0, 0u32, 0.0f64);
+        for _ in 0..checks {
+            std::thread::sleep(Duration::from_secs(2));
+            let (c0, s0) = usage_now();
+            let t0 = std::time::Instant::now();
+            events += p.check_events() as u32;
+            let w = t0.elapsed().as_secs_f64();
+            let (c1, s1) = usage_now();
+            cpu += c1 - c0;
+            max_cpu = max_cpu.max(c1 - c0);
+            csw += s1 - s0;
+            wall += w;
+        }
+        let n = checks.max(1) as f64;
+        println!(
+            "  per check ({checks} checks): CPU {:.0} µs (max {:.0} µs), context switches {:.1}, wall {:.2} ms; checks asking for a poll: {events}",
+            cpu / n * 1e6,
+            max_cpu * 1e6,
+            csw as f64 / n,
+            wall / n * 1e3
+        );
     }
 }
 
