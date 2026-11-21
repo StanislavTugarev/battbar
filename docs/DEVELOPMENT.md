@@ -51,6 +51,15 @@ a shell) shows a test item of N points and logs the frontmost app, the item's wi
 frame and occlusion state, and the screen's menu bar areas around the notch whenever
 they change.
 
+**Hotplug** (0.5, development builds): `BATTBAR_DEV_NO_HOTPLUG=1` switches HID and
+Bluetooth hotplug notifications off, `BATTBAR_DEV_RESCAN_SECS=N` shortens the safety
+re-scan (5 min), `BATTBAR_DEV_LOG_HIDPP=1` prints every HID++ notification and each
+safety re-scan with its time (UNIX seconds). With `BATTBAR_LOG=1` every poll lists each
+device's sources and their status. `scripts/measure-hotplug.py` walks through
+plug/switch scenarios and times them from the log; `--env` passes these variables,
+`--only` picks scenarios:
+`scripts/measure-hotplug.py --app target/battbar.app --only receiver --env BATTBAR_DEV_NO_HOTPLUG=1 --env BATTBAR_DEV_RESCAN_SECS=20 --env BATTBAR_DEV_LOG_HIDPP=1`
+
 **Trying the update check** (development builds only): `BATTBAR_DEV_FAKE_VERSION`
 makes the app compare the latest release with that version instead of its own, so
 *Update available* appears against the real GitHub release. Turn on Settings → Check

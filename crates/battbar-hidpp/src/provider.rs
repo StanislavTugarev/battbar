@@ -44,6 +44,11 @@ struct OpenLink {
     devices: BTreeMap<u8, DeviceInfo>,
     notifications_checked: bool,
     broken: bool,
+    /// Receiver slots that were on line at the last poll (answered, not asleep).
+    online: BTreeSet<u8>,
+    /// Slots that already asked for a poll by speaking while off line; cleared when a
+    /// poll sees them on line (one poll per connection or wake-up).
+    woke: BTreeSet<u8>,
 }
 
 pub struct HidppProvider {
@@ -72,14 +77,22 @@ impl HidppProvider {
     }
 
     /// Notification that should trigger a poll: receiver connection events (HID++ 1.0
-    /// sub-IDs 0x40..=0x4F) or an event of the device's battery feature. Other
-    /// notifications (G-keys, lighting) are ignored.
-    fn relevant(link: &OpenLink, n: &[u8]) -> bool {
+    /// sub-IDs 0x40..=0x4F), the first frame of a receiver device that was not on line
+    /// at the last poll, or an event of the device's battery feature. Other
+    /// notifications of devices on line (G-keys, lighting, wheel) are ignored.
+    fn relevant(link: &mut OpenLink, n: &[u8]) -> bool {
         if n.len() < 4 {
             return false;
         }
         if (0x40..=0x4F).contains(&n[2]) {
             return true;
+        }
+        // A device that was disconnected, asleep or not polled yet speaks: it just
+        // connected or woke up. A Lightspeed receiver does not always announce that
+        // with 0x41 (seen after plugging the receiver in, and when a mouse wakes up).
+        let device_index = (1..=0x0E).contains(&n[1]);
+        if matches!(link.role, LinkRole::Receiver(_)) && device_index && !link.online.contains(&n[1]) {
+            return link.woke.insert(n[1]);
         }
         link.devices.get(&n[1]).and_then(|d| d.battery).is_some_and(|b| {
             let idx = match b {
@@ -133,6 +146,8 @@ impl HidppProvider {
                             devices: BTreeMap::new(),
                             notifications_checked: false,
                             broken: false,
+                            online: BTreeSet::new(),
+                            woke: BTreeSet::new(),
                         },
                     );
                 }
@@ -156,7 +171,9 @@ impl HidppProvider {
                 any = true;
             }
             let notes = std::mem::take(&mut link.ch.notifications);
-            any |= notes.iter().any(|n| Self::relevant(link, n));
+            for n in &notes {
+                any |= Self::relevant(link, n);
+            }
         }
         // Hotplug: notifications trigger checks; a re-scan only as a rare safety net.
         if self.rescan.due(now) {
@@ -168,8 +185,12 @@ impl HidppProvider {
             let open: Vec<String> = self.links.keys().cloned().collect();
             #[cfg(debug_assertions)]
             if std::env::var_os("BATTBAR_DEV_LOG_HIDPP").is_some() {
+                let t = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default();
                 eprintln!(
-                    "hidpp safety re-scan: present={} open={} changed={}",
+                    "hidpp safety re-scan {:.3}: present={} open={} changed={}",
+                    t.as_secs_f64(),
                     ids.len(),
                     open.len(),
                     ids != open
@@ -456,6 +477,16 @@ impl HidppProvider {
         }
         // Forget cached devices that were unpaired.
         link.devices.retain(|idx, _| slots.iter().any(|s| s.index == *idx));
+        // One report per slot, in slot order.
+        debug_assert_eq!(out.len(), slots.len());
+        link.online = slots
+            .iter()
+            .zip(&out)
+            .filter(|(_, r)| !matches!(r.reading.status, Status::Disconnected | Status::Asleep | Status::Error))
+            .map(|(s, _)| s.index)
+            .collect();
+        let online = &link.online;
+        link.woke.retain(|i| !online.contains(i));
         Ok(out)
     }
 

@@ -415,7 +415,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   notifications and then asks the receiver to repeat the connection notification of
   every device on line (HID++ 1.0 register 0x02 ← 0x02, as Solaar's `notify_devices`):
   a device that connected before notifications were on is announced too. Register
-  writes stay off in diagnostics (`dump`, `record`).
+  writes stay off in diagnostics (`dump`, `record`). A receiver does not always send
+  0x41 when a device reaches it later (after plugging the receiver in, when a mouse
+  wakes up), so the first HID++ frame of a device that was not on line at the last
+  poll (disconnected, asleep or not polled yet) also asks for a poll — once per
+  connection or wake-up; frames of a device on line ask for nothing.
 - **Bluetooth LE**: the system decides what is connected. A device that is not in
   `retrieveConnectedPeripherals` is not shown with a value from any source (Battery
   Service, HID++ over GATT). battbar never keeps a connection of its
@@ -556,6 +560,12 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   `docs/ADDING_A_DEVICE.md` without reading code.
 
 ## Backlog (not scheduled)
+
+- **Kind of Bluetooth LE devices with only a Battery Service.** Check whether
+  CoreBluetooth exposes the Appearance characteristic (0x2A01, Generic Access 0x1800)
+  of a connected peripheral; if so, derive the kind from it. If macOS hides it (it
+  usually keeps Generic Access to itself), keep "other" (since 0.5 there is no
+  `system_profiler` lookup).
 
 - **Device events without the 2 s check.** Hotplug is event-driven since 0.5; the
   worker still asks the providers every 2 s for buffered HID++ notifications (a device
