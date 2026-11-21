@@ -3,7 +3,7 @@
 """Measure how long battbar takes to show a device appearing or disappearing.
 
     scripts/measure-hotplug.py [--app /Applications/battbar.app] [--out results.tsv]
-                               [--env NAME=VALUE ...] [--only TEXT ...]
+                               [--env NAME=VALUE ...] [--only TEXT ...] [--repeat N]
 
 Quits the running battbar, starts the given app with BATTBAR_LOG=1 (its poll log on
 stderr goes to a temporary file) and walks through the scenarios below. For each one:
@@ -15,7 +15,8 @@ action and Enter), the scenario is recorded as `already` instead of a time.
 
 `--env` passes extra variables to the app (development builds: e.g.
 `BATTBAR_DEV_NO_HOTPLUG=1 BATTBAR_DEV_RESCAN_SECS=20 BATTBAR_DEV_LOG_HIDPP=1`), `--only`
-keeps the scenarios whose prompt contains the text. The results also give the clock
+keeps the scenarios whose prompt contains the text, `--repeat` walks through them N
+times. The results also give the clock
 time of each Enter, to find it in the log (kept, path printed at the start).
 
 The log line of a poll is written right before the menu bar is redrawn, so the time
@@ -129,8 +130,9 @@ def main():
     ap.add_argument("--timeout", type=float, default=120.0)
     ap.add_argument("--env", action="append", default=[], metavar="NAME=VALUE")
     ap.add_argument("--only", action="append", default=[], metavar="TEXT")
+    ap.add_argument("--repeat", type=int, default=1, metavar="N")
     a = ap.parse_args()
-    scenarios = [s for s in SCENARIOS if not a.only or any(o.lower() in s[0].lower() for o in a.only)]
+    scenarios = [s for s in SCENARIOS if not a.only or any(o.lower() in s[0].lower() for o in a.only)] * a.repeat
     version = plist(a.app, "BattbarVersion") or plist(a.app, "CFBundleShortVersionString")
     log_path = tempfile.mktemp(prefix="battbar-hotplug-", suffix=".log")
     print(f"battbar {version} from {a.app}\nlog: {log_path}")

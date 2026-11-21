@@ -44,10 +44,11 @@ struct OpenLink {
     devices: BTreeMap<u8, DeviceInfo>,
     notifications_checked: bool,
     broken: bool,
-    /// Receiver slots that were on line at the last poll (answered, not asleep).
-    online: BTreeSet<u8>,
-    /// Slots that already asked for a poll by speaking while off line; cleared when a
-    /// poll sees them on line (one poll per connection or wake-up).
+    /// Receiver slots by their state at the last poll.
+    slots: BTreeMap<u8, Status>,
+    /// Slots that already asked for a poll (a frame while off line, or a ping answered
+    /// while disconnected); cleared when a poll sees them on line: one poll per
+    /// connection or wake-up, never a poll loop.
     woke: BTreeSet<u8>,
 }
 
@@ -91,7 +92,8 @@ impl HidppProvider {
         // connected or woke up. A Lightspeed receiver does not always announce that
         // with 0x41 (seen after plugging the receiver in, and when a mouse wakes up).
         let device_index = (1..=0x0E).contains(&n[1]);
-        if matches!(link.role, LinkRole::Receiver(_)) && device_index && !link.online.contains(&n[1]) {
+        let on_line = link.slots.get(&n[1]).is_some_and(|s| is_on_line(*s));
+        if matches!(link.role, LinkRole::Receiver(_)) && device_index && !on_line {
             return link.woke.insert(n[1]);
         }
         link.devices.get(&n[1]).and_then(|d| d.battery).is_some_and(|b| {
@@ -100,6 +102,50 @@ impl HidppProvider {
             };
             idx == n[2]
         })
+    }
+
+    /// Receiver slots that were disconnected at the last poll: ask whether the device is
+    /// there now. A receiver does not announce every connection (seen: a mouse reaching
+    /// a just-plugged receiver sent neither 0x41 nor any frame), but it answers a ping
+    /// for an absent device itself, without radio ("unknown device", ~1 ms). Any other
+    /// answer (the device's, or none in time) asks for one poll. Asleep slots are not
+    /// pinged: a device waking up speaks first (see [`Self::relevant`]).
+    fn ping_disconnected(link: &mut OpenLink) -> bool {
+        if !matches!(link.role, LinkRole::Receiver(_)) {
+            return false;
+        }
+        let candidates: Vec<u8> = link
+            .slots
+            .iter()
+            .filter(|(i, s)| **s == Status::Disconnected && !link.woke.contains(i))
+            .map(|(i, _)| *i)
+            .collect();
+        let mut any = false;
+        let timeout = std::mem::replace(&mut link.ch.timeout, PING_CHECK_TIMEOUT);
+        for idx in candidates {
+            match link.ch.ping(idx) {
+                Err(HidppError::Hidpp10(_) | HidppError::Hidpp20(_)) => {}
+                Err(HidppError::Transport(_)) => {
+                    link.broken = true;
+                    any = true;
+                    break;
+                }
+                r @ (Ok(_) | Err(HidppError::Timeout)) => {
+                    #[cfg(debug_assertions)]
+                    if std::env::var_os("BATTBAR_DEV_LOG_HIDPP").is_some() {
+                        let t = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default();
+                        eprintln!("hidpp ping {:.3}: slot {idx} was disconnected, now {r:?}", t.as_secs_f64());
+                    }
+                    let _ = r;
+                    link.woke.insert(idx);
+                    any = true;
+                }
+            }
+        }
+        link.ch.timeout = timeout;
+        any
     }
 
     /// Record every frame of every link opened from now on.
@@ -146,7 +192,7 @@ impl HidppProvider {
                             devices: BTreeMap::new(),
                             notifications_checked: false,
                             broken: false,
-                            online: BTreeSet::new(),
+                            slots: BTreeMap::new(),
                             woke: BTreeSet::new(),
                         },
                     );
@@ -173,6 +219,9 @@ impl HidppProvider {
             let notes = std::mem::take(&mut link.ch.notifications);
             for n in &notes {
                 any |= Self::relevant(link, n);
+            }
+            if !link.broken {
+                any |= Self::ping_disconnected(link);
             }
         }
         // Hotplug: notifications trigger checks; a re-scan only as a rare safety net.
@@ -204,6 +253,17 @@ impl HidppProvider {
     fn device_def(&self, vid: u16, pids: &[u16]) -> Option<&devicedb::DeviceDef> {
         pids.iter().find_map(|p| self.db.hidpp_device_by_pid(vid, *p))
     }
+}
+
+/// The 2 s event check pings disconnected receiver slots with this timeout: the
+/// receiver answers for an absent device within milliseconds; a device that answers at
+/// all (or makes the receiver wait) gets a poll with the normal timeouts.
+const PING_CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// A receiver slot whose device answered at the last poll (not disconnected, asleep or
+/// failing).
+fn is_on_line(s: Status) -> bool {
+    !matches!(s, Status::Disconnected | Status::Asleep | Status::Error)
 }
 
 fn status_for_ping_error(e: &HidppError) -> Status {
@@ -390,16 +450,7 @@ impl HidppProvider {
         }
         if !link.notifications_checked {
             match receiver::ensure_notifications(&mut link.ch) {
-                Ok(_) => {
-                    link.notifications_checked = true;
-                    // Devices that connected before notifications were on: have them
-                    // announced now (the notifications trigger the next poll).
-                    match receiver::replay_connections(&mut link.ch) {
-                        Ok(()) => {}
-                        Err(e @ HidppError::Transport(_)) => return Err(e),
-                        Err(e) => self.errors.push(format!("{link_id}: connection replay: {e}")),
-                    }
-                }
+                Ok(_) => link.notifications_checked = true,
                 Err(e @ HidppError::Transport(_)) => return Err(e),
                 Err(e) => self.errors.push(format!("{link_id}: notification flags: {e}")),
             }
@@ -479,14 +530,9 @@ impl HidppProvider {
         link.devices.retain(|idx, _| slots.iter().any(|s| s.index == *idx));
         // One report per slot, in slot order.
         debug_assert_eq!(out.len(), slots.len());
-        link.online = slots
-            .iter()
-            .zip(&out)
-            .filter(|(_, r)| !matches!(r.reading.status, Status::Disconnected | Status::Asleep | Status::Error))
-            .map(|(s, _)| s.index)
-            .collect();
-        let online = &link.online;
-        link.woke.retain(|i| !online.contains(i));
+        link.slots = slots.iter().zip(&out).map(|(s, r)| (s.index, r.reading.status)).collect();
+        let slots = &link.slots;
+        link.woke.retain(|i| !slots.get(i).is_some_and(|s| is_on_line(*s)));
         Ok(out)
     }
 

@@ -298,33 +298,6 @@ mod tests {
     }
 
     #[test]
-    fn connection_replay_is_the_solaar_register_write() {
-        // SET_REGISTER (0x80) of register 0x02 with 0x02 to the receiver (0xFF); the
-        // receiver answers with an empty SET_REGISTER reply, then sends 0x41 per device.
-        let mut c = script(vec![vec![
-            vec![0x10, 0xFF, 0x80, 0x02, 0x00, 0x00, 0x00],
-            vec![0x10, 0x01, 0x41, 0x04, 0x61, 0x99, 0x40],
-        ]]);
-        crate::receiver::replay_connections(&mut c).unwrap();
-        assert_eq!(c.transport.written[0], vec![0x10, 0xFF, 0x80, 0x02, 0x02, 0x00, 0x00]);
-        c.drain().unwrap();
-        assert_eq!(
-            c.notifications.len(),
-            1,
-            "the replayed connection notification is kept for the event check"
-        );
-        assert_eq!(c.notifications[0][2], 0x41);
-    }
-
-    #[test]
-    fn connection_replay_is_refused_in_read_only_mode() {
-        let mut c = script(vec![]);
-        c.read_only = true;
-        assert!(crate::receiver::replay_connections(&mut c).is_err());
-        assert!(c.transport.written.is_empty());
-    }
-
-    #[test]
     fn development_and_release_ids_ignore_each_others_replies() {
         // The release app (0x0B) asked the same thing; its reply arrives first.
         let mut c = script(vec![vec![

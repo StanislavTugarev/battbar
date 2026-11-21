@@ -24,9 +24,9 @@ All notable changes to this project are documented here. The format follows
   its own after reading.
 - A mouse or keyboard behind a just-plugged receiver, a mouse waking up, and a headset
   reaching a just-plugged base station could wait for the next minute poll: the
-  receiver is asked to announce its connected devices, the first message of a device
-  that was off line or asleep starts a poll, and the base station's headset state is
-  part of the 2 s check.
+  2 s check asks the receiver about its disconnected devices and the base station
+  about its headset, and the first message of a device that was off line or asleep
+  starts a poll.
 
 ### Removed
 

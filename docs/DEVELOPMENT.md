@@ -146,7 +146,13 @@ or charging events) — hidapi offers no callback for them, so they can only be 
 asking — and, while a SteelSeries base station is open, asks the base for its status
 (one request/reply on its vendor interface): the base sends nothing when its headset
 connects, disconnects, moves to Bluetooth or starts charging. A poll follows only if
-one of those changed. Making the HID++ part event-driven needs a blocking reader per
+one of those changed. Likewise, while a receiver has a slot that was disconnected at
+the last poll, the check pings that slot (the receiver does not announce every
+connection, see SPEC "Hotplug"): the ping rides on the existing check (no timer of
+its own), the receiver answers for an absent device itself without radio (~1 ms in
+the reference trace), the USB bus to the receiver is polled by the host continuously
+anyway, and the devices' batteries are not touched (nothing is sent over the air for
+an absent device; asleep slots are not pinged). Making the HID++ part event-driven needs a blocking reader per
 link (SPEC backlog).
 
 **Idle wake-ups by thread** (reference Mac mini, 2026-11-21, Instruments *System

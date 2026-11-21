@@ -264,6 +264,15 @@ impl BatteryProvider for SteelSeriesProvider {
         for o in self.links.values_mut() {
             if let Ok(Some(r)) = Self::query(o) {
                 let key = nova_pro::status_key(&nova_pro::decode(&r));
+                // Development builds: `BATTBAR_DEV_LOG_HIDPP` also prints headset state
+                // changes on the base with their time (UNIX seconds).
+                #[cfg(debug_assertions)]
+                if std::env::var_os("BATTBAR_DEV_LOG_HIDPP").is_some() && o.last_key != Some(key) {
+                    let t = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default();
+                    eprintln!("base status {:.3}: {key:?}", t.as_secs_f64());
+                }
                 changed |= o.last_key.is_some_and(|k| k != key);
                 o.last_key = Some(key);
             }

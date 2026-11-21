@@ -9,11 +9,6 @@ use battbar_core::transport::FrameTransport;
 use battbar_core::DeviceKind;
 
 const REG_NOTIFICATIONS: u8 = 0x00;
-/// HID++ 1.0 register 0x02 "connection state"; writing 0x02 makes the receiver send a
-/// device-connection notification (0x41) for every device that is on line now (Solaar:
-/// `Receiver.notify_devices`, register `RECEIVER_CONNECTION`).
-pub const REG_CONNECTION_STATE: u8 = 0x02;
-const REPLAY_CONNECTIONS: u8 = 0x02;
 const REG_RECEIVER_INFO: u8 = 0xB5;
 /// Wireless notifications + software present (Solaar NOTIFICATION_FLAG).
 pub const WANTED_NOTIFICATION_FLAGS: u32 = 0x000100 | 0x000800;
@@ -100,15 +95,6 @@ pub fn paired_slots<T: FrameTransport>(ch: &mut Channel<T>, family: ReceiverFami
 }
 
 const RECEIVER_INFO_INDEX: u8 = RECEIVER_INDEX;
-
-/// Ask the receiver to repeat the connection notifications of the devices on line now
-/// (after enabling notifications on a newly opened link: a device that connected before
-/// notifications were on would otherwise never be announced). The notifications arrive
-/// like real ones and trigger a poll.
-pub fn replay_connections<T: FrameTransport>(ch: &mut Channel<T>) -> Result<(), HidppError> {
-    ch.write_short_register(RECEIVER_INDEX, REG_CONNECTION_STATE, [REPLAY_CONNECTIONS, 0, 0])?;
-    Ok(())
-}
 
 /// Make sure the receiver sends connection notifications. Returns true if a register
 /// write was needed (e.g. no vendor software running).

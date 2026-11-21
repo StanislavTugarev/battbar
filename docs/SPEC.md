@@ -411,15 +411,20 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - **Bluetooth**: IOBluetooth connect notifications (and a disconnect notification per
   connected device), registered on the main thread once Bluetooth permission is
   granted — for classic audio devices that are not HID (headsets).
-- **Receivers**: when a receiver link is opened, battbar enables connection
-  notifications and then asks the receiver to repeat the connection notification of
-  every device on line (HID++ 1.0 register 0x02 ← 0x02, as Solaar's `notify_devices`):
-  a device that connected before notifications were on is announced too. Register
-  writes stay off in diagnostics (`dump`, `record`). A receiver does not always send
-  0x41 when a device reaches it later (after plugging the receiver in, when a mouse
-  wakes up), so the first HID++ frame of a device that was not on line at the last
-  poll (disconnected, asleep or not polled yet) also asks for a poll — once per
-  connection or wake-up; frames of a device on line ask for nothing.
+- **Receivers**: the reference Lightspeed receiver sends 0x41 when a device
+  disconnects, but not reliably when one connects (seen: a mouse reaching a
+  just-plugged receiver sent neither 0x41 nor any frame). So:
+  - the 2 s event check **pings every slot that was disconnected** at the last poll
+    (right after a receiver is plugged in: every slot the first poll found absent).
+    For an absent device the receiver answers "unknown device" itself, without radio;
+    any other answer (or none within 0.2 s) asks for a poll;
+  - **asleep** slots are not pinged: the first HID++ frame of a device that was not on
+    line (asleep, disconnected, not polled yet) asks for a poll — a mouse waking up;
+  - each slot asks once per connection or wake-up (until a poll sees it on line), so
+    a device that answers but still looks absent cannot cause a poll loop; frames of a
+    device on line ask for nothing.
+  battbar enables the receiver's connection notifications (register 0x00) as before;
+  register writes stay off in diagnostics (`dump`, `record`).
 - **Bluetooth LE**: the system decides what is connected. A device that is not in
   `retrieveConnectedPeripherals` is not shown with a value from any source (Battery
   Service, HID++ over GATT). battbar never keeps a connection of its
