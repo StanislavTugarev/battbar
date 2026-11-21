@@ -406,3 +406,120 @@ battbar calls 0x1004 function 0 (getCapabilities) and reads the parameter bytes 
   and another battery-powered one. The G502 having `0x0f` in byte1 too makes a single
   "byte = level mask" misread plausible in other code, so name both bytes explicitly. Voltage-only (0x1001) devices on AA cells are covered in 0.1.0 by a guard only
 (synthetic trace `traces/synthetic-receiver-aa-battery-0x1001.jsonl`).
+
+## Hotplug and wake-ups (0.5, 2026-11-21)
+
+Reference Mac mini; Lightspeed receiver (046d:c547) with G502 X PLUS (slot 2) and
+G915 (slot 1); Arctis Nova Pro base station (1038:12e0); Pebble Keys 2 K380s over
+Bluetooth LE. Times from `scripts/measure-hotplug.py`: from pressing Enter at the
+action to the poll that shows the new state (the log line is written right before the
+menu bar is redrawn); development builds add `BATTBAR_DEV_LOG_HIDPP=1` timelines.
+
+### Why 0.4 took a minute for a plugged-in receiver or base
+
+- The 10 s re-scan in 0.4 **did find the receiver** within 10 s (log: the receiver's
+  devices appear in the next poll as "Disconnected"). At that moment the devices had
+  not reached the receiver by radio yet; when they did, nothing told battbar, so they
+  appeared at the next minute poll (69.9 s). The base station likewise: found within
+  10 s, the headset reached it a few seconds later, seen at the minute poll (64.1 s).
+- The Pebble keyboard switched off stayed at 100 % (> 120 s in the first 0.5 build):
+  the value came from the `system_profiler` fallback, whose output was cached for 5
+  minutes.
+
+### What the receiver announces (HID++ notification timelines)
+
+- **Disconnect**: always a 0x41 with flag bit 0x40 ("link not established"), within
+  ~2 s (seen for both devices in every run).
+- **Connect**: not reliable. Sometimes a 0x41 without bit 0x40 (e.g. `10 01 41 11 b1 …`
+  when the G915 was switched on), mostly only the device's own frames (keyboard
+  `11 01 0a 10 01`, mouse `11 02 09 10 01` and other feature notifications) a few
+  seconds after it connected, and once **nothing at all**: after plugging the receiver
+  in, the mouse reached it silently (first poll 16:55:11 "Disconnected", no frame from
+  slot 2 until 16:56:12, where a keyboard frame triggered a poll that found the mouse
+  at 68 %).
+- **Waking up**: the mouse sends `11 02 09 10 01` when it wakes, `11 02 09 10 00`
+  when it falls asleep; no 0x41.
+- Register 0x02 ← 0x02 (Solaar `notify_devices`) makes the receiver send a 0x41 per
+  device at once (tried in 74789ad: `10 01 41 11 31 …`, `10 02 41 11 32 …` right
+  after the write), but only for the state at that moment: devices that connect a few
+  seconds after the receiver is plugged in were still missed. Replaced (077c81b) by a
+  ping of every slot that was disconnected at the last poll, in the existing 2 s check.
+  The receiver answers "unknown device" for an absent device itself (~1 ms in the
+  trace); in the runs below, the ping found the devices 2.3 s after the receiver link
+  opened, before their own first frames (2–5 s later). Nothing was missed without the
+  replay (receiver plugged in 3 times in a row: devices found by the first ping each
+  time).
+
+### `system_profiler` fallback: what it carried
+
+`system_profiler SPBluetoothDataType` knows a battery value only for the Pebble
+(`device_batteryLevelMain: 100%`); the headset, DualSense and G915 entries have none.
+With the fallback disabled (development flag, removed with the path), the app showed
+the same devices, sources (Pebble: `HID++ 0x1004` and `BLE Battery Service`),
+values and kinds. The path, its cache and the live cross-check were removed (17bd056).
+
+### Safety re-scan without hotplug notifications
+
+`BATTBAR_DEV_NO_HOTPLUG=1 BATTBAR_DEV_RESCAN_SECS=20`: receiver unplugged, then
+plugged in.
+
+| Run | Enter (plug) | re-scan found it | shown with % |
+|---|---|---|---|
+| 1 (4182ca7) | 16:54:54 | 16:55:10.8 (16.8 s) | 78.4 s — the mouse connected silently later (see above) |
+| 2 (077c81b) | 17:09:38 | 17:09:54.4 (16.4 s) | 16.5 s |
+
+The re-scan runs at the first 2 s check at least 20 s after the last poll (here 21 s
+after the unplug poll), so it finds a missed receiver within 20–22 s; in release builds
+the interval is 5 minutes and the minute poll scans links anyway.
+
+### Base station: headset state in the 2 s check
+
+Development log of the base's headset state: after plugging the base in (link open
+17:11:14, headset "Disconnected"), the headset reached it at 17:11:18.86 and the poll
+showing it finished at 17:11:20 (1.1 s; the poll itself takes ~1 s). Bluetooth on/off
+on the headset: base state changed at 17:10:46.44 / 17:10:51.55, polls at 17:10:47 /
+17:10:52.
+
+### Results
+
+Seconds from Enter to the new state. "now" = 077c81b (full run; receiver plug also
+3 runs in a row: 2.9, 1.4, 2.4 s).
+
+| Scenario | 0.4.0 | d9fcbbc | 74789ad | now | from the device being on line (log) |
+|---|---|---|---|---|---|
+| Mouse off | 0.0¹ | 0.3 | 1.0 | 1.2 | 0x41 at +1.2 s, poll at once |
+| Mouse on | 0.0¹ | 0.3 | 0.2 | 0.8 | ping found it at +0.9 s |
+| G915 off | 0.0¹ | 1.9 | 0.3 | 1.9 | 0x41 at +2.2 s, poll at once |
+| G915 on | 3.1 | 6.2 | 1.1 | already² | ping found it before Enter |
+| Pebble off | 2.6 | > 120 | 1.2 | 0.1 | |
+| Pebble on | 6.4 | already | 3.3 | 4.9 | HID hotplug at ~+3.7 s (Bluetooth connection), shown 0.3 s later |
+| Headset Bluetooth on | 1.7 | 0.0 | 1.1 | 7.0 | base state at +6.4 s, poll 0.6 s later |
+| Headset Bluetooth off | 3.0 | 1.5 | 3.3 | 5.1 | base state at +4.5 s, poll 0.5 s later |
+| Receiver unplugged | 0.8 | 0.0 | 0.0 | 4.3³ | HID removal, poll 0.3 s later |
+| Receiver plugged in | 69.9 | 21.0 | 62.5 | 7.0³ (2.4 / 1.4 / 2.9) | link open +4 s, ping found the mouse 2.3 s later |
+| Base unplugged | 0.6 | already | 0.0 | 5.2³ | HID removal, poll 0.3 s later |
+| Base plugged in | 64.1 | 20.4 | 5.7 | 10.4³ | link open +4 s, headset on line +8.9 s, shown +10.1 s |
+
+¹ 0.4 polled every 6–10 s, so a scenario could land right after a poll; not comparable.
+² Shown before Enter was pressed. ³ The log shows the USB event itself 4–5 s after
+Enter in this run (the receiver-only runs: 0.0–1.4 s), i.e. the time of reaching the
+port; battbar reacted within 0.3 s of the event.
+
+Remaining delays are the devices' own: the headset takes 4–9 s to connect by radio or
+Bluetooth, the Pebble ~3–4 s to connect over Bluetooth. Every device was shown within
+≤ 2.3 s after it was on line (the 2 s check), ≤ 0.3 s after a USB or Bluetooth HID
+hotplug event.
+
+Observations, not changed:
+- When the Pebble connects, CoreBluetooth first reports it as "Pebble K380s" with
+  the Battery Service not yet readable: for one poll (17:10:38) a separate row
+  "Pebble K380s [Other] Battery not reported" existed, merged into the Pebble a second
+  later (new devices are held back by the new-device check, so it is not expected in
+  the menu).
+- In this run no IOBluetooth connect/disconnect poll appeared for the headset's
+  Bluetooth; the base's state caught both changes. Earlier runs showed it (0.3 s).
+
+Idle wake-ups (Instruments System Trace, 30 s between polls): 9.2/s in 0.4.0, 1.8/s
+in d9fcbbc; per thread in DEVELOPMENT.md "Timers and wake-ups". The ping of
+disconnected slots rides on the existing 2 s check (no extra wake-up); not measured
+again.
