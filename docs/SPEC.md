@@ -429,22 +429,33 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   variant was tried; note: the macOS 26 menu bar ignores `contentTintColor` on
   template images, colour would need a non-template image). Alternative considered:
   always the lowest device's percentage (`CollapsedStyle::Lowest`).
-- **Compact** layout (icons; percentage only at or below the threshold) exists for
-  the automatic step Expanded → Compact → Collapsed; not selectable.
 - **Migration from 0.3**: the old per-device items (`NSStatusItem … battbar_<id>` in
   the user defaults) are removed at start.
-- **Automatic collapsing** when the item is hidden by the system or by the notch: not
-  implemented. Discovery first (`battbar-app --probe-menu-bar`, results to be recorded
-  here): which signal is reliable — window occlusion state, the window frame against
-  `NSScreen.auxiliaryTopLeftArea` / `auxiliaryTopRightArea` / `visibleFrame` — on a
-  display with a notch, an external display, and with long (Xcode, Pages) vs. short
-  (Finder) app menus. First observation on the reference Mac mini (no notch, two
-  displays): an item too wide to fit has its window positioned but the occlusion
-  state's visible bit clear; before placement the window is off-screen (`screen=nil`).
-  Planned rules: check after the item's content changes, on screen parameter changes,
-  and on app activation (shrink only); grow back only on screen/resolution/display
-  configuration changes; remember the step per screen configuration; if no reliable
-  signal exists, Expanded without automatic collapsing plus a hint in the menu.
+- **Not enough space** (no automatic shrinking or growing): while Expanded, the app
+  checks every 0.5 s whether macOS still shows the item. If the visible bit of the
+  item window's occlusion state stays clear for **1 s** — counted only from **1 s
+  after** the island's content, the screen configuration or the mode last changed
+  (macOS reports a new or resized item hidden until it is placed, ~0.5 s) — battbar
+  switches the **setting** to Collapsed and posts a notification, every time: "battbar
+  collapsed — Not enough space in the menu bar to show all devices. Free up space and
+  choose Expand in the battbar menu to try again." It returns to Expanded only when
+  the user chooses Expand (menu or Settings); nothing expands by itself and screen
+  configurations are not tracked. Until an Expand fits, the menu shows "Not enough
+  space last time" under *Expand in Menu Bar* (`collapsed_for_space`; for turned-off
+  notifications). Logic in `overflow.rs`, tested (collapse after 1 s hidden, initial
+  placement ignored, no self-expansion, repeated Expand → new collapse and
+  notification).
+- **Discovery** (2026-11-21, `battbar-app --probe-menu-bar`, Mac mini with two
+  external displays, macOS 26): items of 200 and 400 pt were always shown; an item of
+  1200 pt was shown with short app menus (Terminal, Finder, Claude) and hidden with
+  Chrome in front. Hidden ⇔ occlusion visible bit clear, and at the same time the
+  window frame left the screen's menu bar (`inside_screen=false`); both changed
+  within 0.5 s, no false signals. A new item reports hidden (`screen=nil`, frame
+  `(0,-30)`) for ~0.5 s before placement. Verified in the app with a padded
+  development item (`BATTBAR_DEV_PAD_WIDTH`): hidden at t, collapsed at t + 2 s,
+  notification posted, note in the menu; restart stays collapsed. **Displays with a
+  notch: not measured** (no MacBook); the same occlusion signal is expected, since
+  macOS hides an item behind the notch like one without room.
 - Clicking a segment to open the menu at that device's section: in the backlog — a
   status item with a menu cannot see where it was clicked, and AppKit has no public
   API to open a menu with a given item highlighted.
@@ -495,6 +506,10 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
+- **Compact step.** Between Expanded and Collapsed: icons only, a percentage only at
+  or below the low-battery threshold — for menu bars where the full island does not
+  fit but icons would. Needs a rule for growing back without a loop (items hidden by
+  one app's menu, shown with another's); 0.4 collapses straight to Collapsed instead.
 - **Click a segment → its section.** Open the menu with the clicked device's section
   highlighted. Needs the item without an attached menu (to get the click position) and
   a way to highlight an item that AppKit does not offer publicly; possible fallback:
@@ -544,8 +559,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 ## Revision history
 
 - **2026-11-21** — 0.4.0: one status item (expanded / collapsed), one sectioned menu,
-  device order, 0.3 migration, monochrome collapsed item (no red); automatic
-  collapsing pending discovery (`--probe-menu-bar`); segment click → backlog.
+  device order, 0.3 migration, monochrome collapsed item (no red); discovery with
+  `--probe-menu-bar` (occlusion signal; notch not measured); instead of an automatic
+  Expanded → Compact → Collapsed state machine a simple fallback: hidden 1 s →
+  setting Collapsed + notification, Expand only by the user; Compact step and segment
+  click → backlog.
 - **2026-11-20** — 0.3.0-rc.2: G915 BLE Battery Service flagged unreliable (database
   flag, never calibrated from); device IDs of linked/merged devices from the whole
   group; classic Bluetooth battery read in a helper process (IOBluetooth gives a

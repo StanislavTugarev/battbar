@@ -38,8 +38,12 @@ process) and `BATTBAR_DEBUG_WATCH=<seconds>` (battery values read every 5 s in t
 process vs. through the helper process).
 
 **Menu bar item** (0.4): `target/debug/battbar-app --render-bar-preview DIR` (debug
-builds) draws the status item for sample devices in every layout (expanded, compact,
-both collapsed styles, warning, no devices) as 2× PNGs with the real drawing code.
+builds) draws the status item for sample devices in every layout (expanded, both
+collapsed styles, a low device, no devices) as 2× PNGs with the real drawing code.
+`BATTBAR_DEV_PAD_WIDTH=<points>` (debug builds) widens the expanded item, to try the
+"not enough space" fallback on a large display:
+`open --env BATTBAR_LOG=1 --env BATTBAR_DEV_PAD_WIDTH=1400 --stderr /tmp/battbar.log target/battbar.app`
+(the log shows `status item visible=false` and then `collapsing`).
 `BATTBAR_DEV_DUMP_MENU=1` (debug builds) prints the menu as an outline and the item's
 window frame and occlusion state on every render. `battbar-app --probe-menu-bar
 [--width N]` (all builds; no devices, Bluetooth or settings, so it can be started from

@@ -98,6 +98,18 @@ pub fn image(view: &BarView) -> Option<Retained<NSImage>> {
     let parts: Vec<Part> = view.segments.iter().map(|v| part(v, &font)).collect();
     let height = NSStatusBar::systemStatusBar().thickness().max(18.0);
     let width = (parts.iter().map(|p| p.width).sum::<f64>() + SEGMENT_GAP * (parts.len() as f64 - 1.0)).ceil();
+    // Development: make the expanded item (several segments) wider to try the "not
+    // enough space" fallback.
+    #[cfg(debug_assertions)]
+    let width = if parts.len() < 2 {
+        width
+    } else {
+        width
+            + std::env::var("BATTBAR_DEV_PAD_WIDTH")
+                .ok()
+                .and_then(|w| w.parse::<f64>().ok())
+                .unwrap_or(0.0)
+    };
     let draw = RcBlock::new(move |_dst: NSRect| -> Bool {
         let mut x = 0.0;
         for p in &parts {

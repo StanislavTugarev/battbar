@@ -116,6 +116,9 @@ one notification per version. Pre-releases are ignored.
   spare battery in a base station), connection and where the value comes from. The
   device's name opens its actions — move it, hide it, merge it with another entry,
   split it, or unlink a remembered Bluetooth connection.
+- If the expanded item does not fit (long app menus, small display, many icons), macOS
+  hides it; battbar then switches to collapsed and tells you in a notification. Choose
+  **Expand in Menu Bar** again once there is room.
 - Updating from 0.3 keeps the expanded look; new installations start collapsed.
 - **Settings**: launch at login, update check (off by default), menu bar mode,
   update interval, low-battery alert threshold (default 15 %, once per discharge),

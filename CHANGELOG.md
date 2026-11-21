@@ -24,6 +24,9 @@ All notable changes to this project are documented here. The format follows
   Calibration) are in the submenu of its name.
 - Devices are ordered by type (keyboard, mouse, headset, others); *Move Left / Right*
   in a device's submenu changes the order, Settings → Menu Bar resets it.
+- Not enough room for the expanded item (macOS hides it): battbar switches to
+  Collapsed and says so in a notification. It expands again only when you choose
+  Expand; until that fits, the menu shows "Not enough space last time".
 
 ### Fixed
 
@@ -36,7 +39,7 @@ All notable changes to this project are documented here. The format follows
 
 - `battbar-app --probe-menu-bar [--width N]`: a diagnostic that shows a test menu bar
   item and logs whether macOS shows or hides it (notch, long app menus, external
-  displays) — groundwork for collapsing automatically when the menu bar is full.
+  displays).
 
 ## [0.3.0] - 2026-11-20
 

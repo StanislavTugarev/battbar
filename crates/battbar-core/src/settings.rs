@@ -108,6 +108,9 @@ pub struct Settings {
     /// Device IDs in the order the user arranged them (Move Left / Right). Empty: by
     /// type. Devices not listed follow in the default order.
     pub device_order: Vec<String>,
+    /// The last Expand did not fit: battbar switched back to Collapsed. Shown next to
+    /// *Expand in Menu Bar* until an Expand fits.
+    pub collapsed_for_space: bool,
 }
 
 impl Default for Settings {
@@ -136,6 +139,7 @@ impl Default for Settings {
             update_notified: None,
             display_mode: None,
             device_order: vec![],
+            collapsed_for_space: false,
         }
     }
 }

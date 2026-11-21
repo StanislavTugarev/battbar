@@ -4,6 +4,7 @@
 
 mod alerts;
 mod bar;
+mod overflow;
 mod probe;
 mod ui;
 mod updates;
@@ -88,6 +89,14 @@ struct App {
     reports: Vec<DeviceReport>,
     devices: Vec<Device>,
     item: Option<Retained<NSStatusItem>>,
+    /// Expanded item hidden by macOS → back to Collapsed (see overflow.rs).
+    overflow: overflow::OverflowGuard,
+    /// What the item showed last (layout + segments) and the screen configuration, to
+    /// restart the overflow check when either changes.
+    bar_key: String,
+    screens_key: String,
+    /// Last observed visibility (for the log).
+    last_visible: Option<bool>,
     /// IDs of the devices shown in the menu bar / device sections, in display order.
     shown: Vec<String>,
     actions: Vec<Action>,
@@ -705,7 +714,12 @@ impl App {
                 }
                 return None;
             }
-            Action::SetDisplayMode(m) => self.settings.display_mode = Some(m),
+            Action::SetDisplayMode(m) => {
+                self.settings.display_mode = Some(m);
+                if m == DisplayMode::Expanded {
+                    self.overflow.changed(std::time::Instant::now());
+                }
+            }
             Action::MoveDevice(id, delta) => {
                 self.settings.device_order = ui::move_device(&self.shown, &self.settings.device_order, &id, delta);
             }
@@ -1052,21 +1066,28 @@ impl App {
         }
         self.separator(&menu);
         match self.settings.display_mode() {
-            DisplayMode::Collapsed => self.add(
-                &menu,
-                "Expand in Menu Bar",
-                Some(Action::SetDisplayMode(DisplayMode::Expanded)),
-                false,
-                "",
-            ),
-            DisplayMode::Expanded => self.add(
-                &menu,
-                "Collapse in Menu Bar",
-                Some(Action::SetDisplayMode(DisplayMode::Collapsed)),
-                false,
-                "",
-            ),
-        };
+            DisplayMode::Collapsed => {
+                self.add(
+                    &menu,
+                    "Expand in Menu Bar",
+                    Some(Action::SetDisplayMode(DisplayMode::Expanded)),
+                    false,
+                    "",
+                );
+                if self.settings.collapsed_for_space {
+                    self.add(&menu, "    Not enough space last time", None, false, "");
+                }
+            }
+            DisplayMode::Expanded => {
+                self.add(
+                    &menu,
+                    "Collapse in Menu Bar",
+                    Some(Action::SetDisplayMode(DisplayMode::Collapsed)),
+                    false,
+                    "",
+                );
+            }
+        }
         self.add(&menu, "Refresh", Some(Action::Refresh), false, "r");
         let s = self.submenu(&menu, "Settings");
         self.settings_menu(&s);
@@ -1115,6 +1136,16 @@ impl App {
         self.shown = visible.iter().map(|d| d.id.clone()).collect();
         let refs: Vec<&Device> = visible.iter().collect();
         let view = ui::bar_view(&refs, self.layout(), self.settings.low_battery_threshold, ui::COLLAPSED_STYLE);
+        // A new size or layout: macOS places the item again; restart the overflow check.
+        let key = format!(
+            "{:?}{:?}",
+            self.layout(),
+            view.segments.iter().map(|s| (s.symbol, &s.title, s.dimmed)).collect::<Vec<_>>()
+        );
+        if key != self.bar_key {
+            self.bar_key = key;
+            self.overflow.changed(std::time::Instant::now());
+        }
         let it = self.status_item();
         if let Some(b) = it.button(self.mtm) {
             b.setImage(bar::image(&view).as_deref());
@@ -1163,6 +1194,67 @@ fn dump_menu(menu: &NSMenu, depth: usize) {
         eprintln!("{}{mark} {}", "  ".repeat(depth), item.title());
         if let Some(sub) = sub {
             dump_menu(&sub, depth + 1);
+        }
+    }
+}
+
+impl App {
+    /// Every 0.5 s while Expanded: is the item still shown? macOS hides a status item
+    /// that has no room (occlusion state without the visible bit; SPEC "Menu bar
+    /// display"). Hidden for 1 s → the setting goes back to Collapsed, with a
+    /// notification every time. battbar never expands by itself.
+    fn check_overflow(&mut self) {
+        if self.settings.display_mode() != DisplayMode::Expanded {
+            return;
+        }
+        let now = std::time::Instant::now();
+        let screens: String = objc2_app_kit::NSScreen::screens(self.mtm)
+            .iter()
+            .map(|s| format!("{:?}@{}", s.frame(), s.backingScaleFactor()))
+            .collect();
+        if screens != self.screens_key {
+            self.screens_key = screens;
+            self.overflow.changed(now);
+        }
+        let Some(win) = self.item.as_ref().and_then(|i| i.button(self.mtm)).and_then(|b| b.window()) else {
+            return;
+        };
+        let visible = win.occlusionState().0 & objc2_app_kit::NSWindowOcclusionState::Visible.0 != 0;
+        if std::env::var_os("BATTBAR_LOG").is_some() && Some(visible) != self.last_visible {
+            eprintln!("[{}] status item visible={visible} frame={:?}", local_time(), win.frame());
+        }
+        self.last_visible = Some(visible);
+        match self.overflow.observe(now, visible) {
+            Some(overflow::Outcome::Collapse) => {
+                if std::env::var_os("BATTBAR_LOG").is_some() {
+                    eprintln!("[{}] expanded item hidden by macOS for 1 s: collapsing", local_time());
+                }
+                self.settings.display_mode = Some(DisplayMode::Collapsed);
+                self.settings.collapsed_for_space = true;
+                self.save();
+                if self.menu_open {
+                    self.dirty = true;
+                } else {
+                    self.render();
+                }
+                notify::post(&alerts::Alert {
+                    id: format!("collapsed-{}", unix_now()),
+                    title: "battbar collapsed".into(),
+                    body: "Not enough space in the menu bar to show all devices. Free up space and choose Expand in \
+                           the battbar menu to try again."
+                        .into(),
+                });
+            }
+            Some(overflow::Outcome::Fits) if self.settings.collapsed_for_space => {
+                self.settings.collapsed_for_space = false;
+                self.save();
+                if self.menu_open {
+                    self.dirty = true;
+                } else {
+                    self.render();
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -1230,7 +1322,6 @@ fn render_bar_preview(dir: &std::path::Path) {
     let cases: Vec<(&str, Vec<&Device>, L, S)> = vec![
         ("expanded", vec![&k, &m, &h_ok], L::Expanded, S::Glyph),
         ("expanded-charging-asleep", vec![&k, &m, &h, &p], L::Expanded, S::Glyph),
-        ("compact-low", vec![&k, &m_low, &h_ok], L::Compact, S::Glyph),
         ("collapsed-glyph", vec![&k, &m, &h_ok], L::Collapsed, S::Glyph),
         ("collapsed-lowest", vec![&k, &m, &h_ok], L::Collapsed, S::Lowest),
         ("collapsed-low", vec![&k, &m_low, &h_ok], L::Collapsed, S::Glyph),
@@ -1315,6 +1406,10 @@ fn main() {
         reports: vec![],
         devices: vec![],
         item: None,
+        overflow: overflow::OverflowGuard::default(),
+        bar_key: String::new(),
+        screens_key: String::new(),
+        last_visible: None,
         shown: vec![],
         actions: vec![],
         tx,
@@ -1337,6 +1432,10 @@ fn main() {
     APP.with(|c| *c.borrow_mut() = Some(state));
     forget_old_status_items();
     with_app(|a| a.render());
+    let overflow_tick = block2::RcBlock::new(|_t: std::ptr::NonNull<objc2_foundation::NSTimer>| {
+        with_app(|a| a.check_overflow());
+    });
+    let _overflow_timer = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.5, true, &overflow_tick) };
     notify::request_authorization();
     // First-run question, once the run loop is up. Postponed while App Translocation is
     // active (a login item registered from the randomised copy would break); answered

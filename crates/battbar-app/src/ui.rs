@@ -207,10 +207,6 @@ pub fn move_device(current: &[String], custom: &[String], id: &str, delta: isize
 pub enum Layout {
     /// Icon and percentage for every visible device.
     Expanded,
-    /// Icons only; a percentage only on devices at or below the low-battery threshold.
-    /// The automatic step between Expanded and Collapsed (not chosen by the user).
-    #[cfg_attr(not(debug_assertions), allow(dead_code))]
-    Compact,
     /// One icon; see [`CollapsedStyle`].
     Collapsed,
 }
@@ -249,16 +245,6 @@ pub fn bar_view(devices: &[&Device], layout: Layout, threshold: Option<u8>, styl
     let any_low = devices.iter().any(|d| is_low(d, threshold));
     let segments = match layout {
         Layout::Expanded => devices.iter().map(|d| item_view(d)).collect(),
-        Layout::Compact => devices
-            .iter()
-            .map(|d| {
-                let mut v = item_view(d);
-                if !is_low(d, threshold) {
-                    v.title.clear();
-                }
-                v
-            })
-            .collect(),
         Layout::Collapsed => {
             // First of the lowest in display order.
             let lowest = devices
@@ -341,10 +327,6 @@ mod tests {
         assert_eq!(titles(&e), ["88%", "12%", ""]);
         assert_eq!(e.segments.iter().map(|s| s.dimmed).collect::<Vec<_>>(), [false, false, true]);
         assert_eq!(e.tooltip.lines().count(), 3);
-
-        let c = bar_view(&all, Layout::Compact, Some(15), COLLAPSED_STYLE);
-        assert_eq!(titles(&c), ["", "12%", ""], "percentage only below the threshold");
-        assert_eq!(c.segments.len(), 3);
 
         // Collapsed: the low device instead of the glyph.
         let low = bar_view(&all, Layout::Collapsed, Some(15), CollapsedStyle::Glyph);
