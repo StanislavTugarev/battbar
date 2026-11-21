@@ -114,57 +114,151 @@ fn new_api() -> Result<HidApi, String> {
 // Rule (docs/DEVELOPMENT.md): system objects bound to a run loop live on long-lived
 // threads that run that loop. Here one service thread owns the HidApi for the whole
 // process: every hidapi call (enumerate, open) runs on it as a job, and between jobs it
-// services its run loop, so IOKit events queued on the manager are handled instead of
-// piling up.
+// waits in its run loop, so IOKit events queued on the manager are handled instead of
+// piling up — without waking up when nothing happens.
 
 type Job = Box<dyn FnOnce(&mut Result<HidApi, String>) + Send>;
 
 struct Service {
     tx: Mutex<std::sync::mpsc::Sender<Job>>,
+    /// Wakes the service thread (macOS: signals its run loop source).
+    waker: Waker,
 }
 
 static RUN_LOOP_TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// How often the service thread has serviced its run loop (tests / diagnostics).
+/// How often the service thread's run loop has returned (once per wake-up: a job or an
+/// IOKit event). Tests check that it wakes for jobs and stays asleep otherwise.
 pub fn service_run_loop_ticks() -> u64 {
     RUN_LOOP_TICKS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+// The service thread sleeps in its run loop until IOKit has an event for the HID
+// manager or a job arrives — no periodic wake-ups (0.3 polled every 20 ms). A job
+// signals a run loop source of its own: a signal stays pending until the source is
+// handled, so a job sent just before the thread starts waiting is not lost (a
+// CFRunLoopStop at that moment would be).
 #[cfg(target_os = "macos")]
-fn service_run_loop_once() {
+mod cf {
     use std::ffi::c_void;
+
+    #[repr(C)]
+    pub struct SourceContext {
+        pub version: isize,
+        pub info: *mut c_void,
+        pub retain: Option<extern "C" fn(*const c_void) -> *const c_void>,
+        pub release: Option<extern "C" fn(*const c_void)>,
+        pub copy_description: Option<extern "C" fn(*const c_void) -> *const c_void>,
+        pub equal: Option<extern "C" fn(*const c_void, *const c_void) -> u8>,
+        pub hash: Option<extern "C" fn(*const c_void) -> usize>,
+        pub schedule: Option<extern "C" fn(*mut c_void, *const c_void, *const c_void)>,
+        pub cancel: Option<extern "C" fn(*mut c_void, *const c_void, *const c_void)>,
+        pub perform: Option<extern "C" fn(*mut c_void)>,
+    }
+
     #[link(name = "CoreFoundation", kind = "framework")]
     extern "C" {
-        static kCFRunLoopDefaultMode: *const c_void;
-        fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source_handled: u8) -> i32;
+        pub static kCFRunLoopDefaultMode: *const c_void;
+        pub fn CFRunLoopGetCurrent() -> *const c_void;
+        pub fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source_handled: u8) -> i32;
+        pub fn CFRunLoopSourceCreate(allocator: *const c_void, order: isize, context: *mut SourceContext) -> *const c_void;
+        pub fn CFRunLoopAddSource(rl: *const c_void, source: *const c_void, mode: *const c_void);
+        pub fn CFRunLoopSourceSignal(source: *const c_void);
+        pub fn CFRunLoopWakeUp(rl: *const c_void);
     }
-    // Handle whatever is pending, without blocking.
-    unsafe { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0, 0) };
+
+    extern "C" fn nothing(_info: *mut c_void) {}
+
+    /// Add a source that only wakes this thread's run loop; returns (run loop, source).
+    /// Both live for the whole process (the service thread never exits).
+    pub fn install_wake_source() -> (usize, usize) {
+        let mut ctx = SourceContext {
+            version: 0,
+            info: std::ptr::null_mut(),
+            retain: None,
+            release: None,
+            copy_description: None,
+            equal: None,
+            hash: None,
+            schedule: None,
+            cancel: None,
+            perform: Some(nothing),
+        };
+        unsafe {
+            let rl = CFRunLoopGetCurrent();
+            let src = CFRunLoopSourceCreate(std::ptr::null(), 0, &mut ctx);
+            CFRunLoopAddSource(rl, src, kCFRunLoopDefaultMode);
+            (rl as usize, src as usize)
+        }
+    }
+
+    /// Sleep until an IOKit event or [`wake`]. The own source keeps the run loop from
+    /// being empty, so this never returns at once for lack of sources.
+    pub fn wait() {
+        unsafe { CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0e10, 1) };
+    }
+
+    pub fn wake(rl: usize, src: usize) {
+        unsafe {
+            CFRunLoopSourceSignal(src as *const c_void);
+            CFRunLoopWakeUp(rl as *const c_void);
+        }
+    }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn service_run_loop_once() {}
+struct Waker {
+    #[cfg(target_os = "macos")]
+    run_loop: usize,
+    #[cfg(target_os = "macos")]
+    source: usize,
+}
+
+impl Waker {
+    fn wake(&self) {
+        #[cfg(target_os = "macos")]
+        cf::wake(self.run_loop, self.source);
+    }
+}
 
 fn service() -> &'static Service {
     static SERVICE: OnceLock<Service> = OnceLock::new();
     SERVICE.get_or_init(|| {
         let (tx, rx) = std::sync::mpsc::channel::<Job>();
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<Waker>(1);
         std::thread::Builder::new()
             .name("battbar-hid-service".into())
             .spawn(move || {
+                #[cfg(target_os = "macos")]
+                let waker = {
+                    let (run_loop, source) = cf::install_wake_source();
+                    Waker { run_loop, source }
+                };
+                #[cfg(not(target_os = "macos"))]
+                let waker = Waker {};
+                let _ = ready_tx.send(waker);
                 let mut api = new_api();
                 loop {
-                    match rx.recv_timeout(std::time::Duration::from_millis(20)) {
-                        Ok(job) => job(&mut api),
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                    // Every job sent so far, then sleep until the next event or job.
+                    loop {
+                        match rx.try_recv() {
+                            Ok(job) => job(&mut api),
+                            Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                            Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                        }
                     }
-                    service_run_loop_once();
+                    #[cfg(target_os = "macos")]
+                    cf::wait();
+                    #[cfg(not(target_os = "macos"))]
+                    match rx.recv() {
+                        Ok(job) => job(&mut api),
+                        Err(_) => return,
+                    }
                     RUN_LOOP_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             })
             .expect("spawn HID service thread");
-        Service { tx: Mutex::new(tx) }
+        let waker = ready_rx.recv().expect("HID service thread started");
+        Service { tx: Mutex::new(tx), waker }
     })
 }
 
@@ -178,12 +272,13 @@ fn with_api<R: Send + 'static>(f: impl FnOnce(&mut HidApi) -> Result<R, Transpor
         };
         let _ = tx.send(r);
     });
-    service()
-        .tx
+    let svc = service();
+    svc.tx
         .lock()
         .unwrap()
         .send(job)
         .map_err(|_| TransportError::Io("HID service stopped".into()))?;
+    svc.waker.wake();
     rx.recv().map_err(|_| TransportError::Io("HID service stopped".into()))?
 }
 

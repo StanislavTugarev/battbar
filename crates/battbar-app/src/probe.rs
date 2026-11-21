@@ -8,6 +8,11 @@
 //! window's frame, its occlusion state and visibility, and the screen with its menu
 //! bar areas left and right of the notch. Reads no devices, no Bluetooth, no settings;
 //! safe to start from a shell. Quit with Ctrl-C.
+//!
+//! It also subscribes to the item window's occlusion notifications (what the app uses)
+//! and prints each as `EVENT`, so missing or late notifications show next to the
+//! polled state. `--grow W --after S` widens the item to W points after S seconds.
+//! (Polling here is deliberate: this is a diagnostic, not the app.)
 
 use block2::RcBlock;
 use objc2::rc::Retained;
@@ -87,7 +92,7 @@ fn snapshot(mtm: MainThreadMarker, item: &NSStatusItem) -> String {
     s
 }
 
-pub fn run(width: f64) {
+pub fn run(width: f64, grow: Option<(f64, f64)>) {
     let mtm = MainThreadMarker::new().expect("main thread");
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
@@ -99,6 +104,7 @@ pub fn run(width: f64) {
     println!("probe: status item width {width} pt; switch apps, screens and menus; Ctrl-C to quit");
     let last = RefCell::new(String::new());
     let start = std::time::Instant::now();
+    let item_for_events = item.clone();
     let tick = RcBlock::new(move |_t: std::ptr::NonNull<NSTimer>| {
         let now = snapshot(mtm, &item);
         if *last.borrow() != now {
@@ -108,5 +114,36 @@ pub fn run(width: f64) {
         }
     });
     let _timer = unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.5, true, &tick) };
+    // The app's signal: occlusion notifications of the item's window.
+    let observer = item_for_events.button(mtm).and_then(|b| b.window()).map(|win| {
+        let w2 = win.clone();
+        let block = RcBlock::new(move |_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+            let visible = w2.occlusionState().0 & 2 != 0;
+            println!(
+                "[{:>7.1}s] EVENT occlusion changed: visible={visible} frame={}",
+                start.elapsed().as_secs_f64(),
+                r(w2.frame())
+            );
+            let _ = std::io::stdout().flush();
+        });
+        unsafe {
+            objc2_foundation::NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+                Some(objc2_app_kit::NSWindowDidChangeOcclusionStateNotification),
+                Some(&win),
+                Some(&objc2_foundation::NSOperationQueue::mainQueue()),
+                &block,
+            )
+        }
+    });
+    let _grow_timer = grow.map(|(w, after)| {
+        let it = item_for_events.clone();
+        let block = RcBlock::new(move |_t: std::ptr::NonNull<NSTimer>| {
+            println!("[{:>7.1}s] GROW to {w} pt", start.elapsed().as_secs_f64());
+            let _ = std::io::stdout().flush();
+            it.setLength(w);
+        });
+        unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(after, false, &block) }
+    });
+    let _keep = observer;
     app.run();
 }

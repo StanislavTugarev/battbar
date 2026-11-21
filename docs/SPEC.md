@@ -432,7 +432,12 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - **Migration from 0.3**: the old per-device items (`NSStatusItem … battbar_<id>` in
   the user defaults) are removed at start.
 - **Not enough space** (no automatic shrinking or growing): while Expanded, the app
-  checks every 0.5 s whether macOS still shows the item. If the visible bit of the
+  watches whether macOS still shows the item — **event-driven, no polling**: it
+  subscribes to `NSWindowDidChangeOcclusionStateNotification` of the item's window
+  (again if AppKit replaces the window) and to
+  `NSApplicationDidChangeScreenParametersNotification`, and keeps at most one one-shot
+  timer (hidden → timer for the 1 s below; shown again → cancelled; shown and settled
+  → no timer at all). If the visible bit of the
   item window's occlusion state stays clear for **1 s** — counted only from **1 s
   after** the island's content, the screen configuration or the mode last changed
   (macOS reports a new or resized item hidden until it is placed, ~0.5 s) — battbar
@@ -456,6 +461,16 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   notification posted, note in the menu; restart stays collapsed. **Displays with a
   notch: not measured** (no MacBook); the same occlusion signal is expected, since
   macOS hides an item behind the notch like one without room.
+- **Occlusion notifications** (2026-11-21, probe with notifications next to 0.5 s
+  polling): every change of the visible bit seen by polling came with a notification
+  at the same time or earlier (≤ 0.1 s), also when the item grew past the available
+  room (`--grow`); moving without a visibility change sends none. Which item fits
+  depends on the display whose menu bar is active: with Finder/Chrome on the 2560 pt
+  display a 1640 pt island fit, with Claude on the 1920 pt display it was hidden. That
+  explains the one "slow" fallback seen while testing (23 s): the island fit on the
+  wide display and was hidden only when the active app moved to the narrow one — not
+  a detection delay. App verified: Finder in front → shown, two settle checks only;
+  Claude in front → notification, collapse 1 s later, notification posted.
 - Clicking a segment to open the menu at that device's section: in the backlog — a
   status item with a menu cannot see where it was clicked, and AppKit has no public
   API to open a menu with a given item highlighted.
@@ -506,6 +521,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
+- **Device events without the 2 s check.** The worker asks the providers every 2 s
+  whether something happened (buffered HID++ notifications, hotplug every 10 s,
+  Bluetooth connections every 6 s; DEVELOPMENT "Timers and wake-ups"). Event-driven
+  instead: a blocking reader per HID++ link that wakes the worker, IOHIDManager
+  matching callbacks for hotplug, IOBluetooth connect notifications.
 - **Compact step.** Between Expanded and Collapsed: icons only, a percentage only at
   or below the low-battery threshold — for menu bars where the full island does not
   fit but icons would. Needs a rule for growing back without a loop (items hidden by

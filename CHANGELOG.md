@@ -30,6 +30,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- battbar woke up about 50 times a second in the background: the thread that talks to
+  HID devices checked for work every 20 ms. It now sleeps until macOS or a request
+  wakes it (measured: ~45 → ~5.5 context switches per second for the whole app).
 - After *Merge With*, *Split* or *Unlink* the device disappeared from the menu bar for
   up to a minute: the regrouped device has a new ID, and the check that holds back
   newly appearing devices treated it as new. Devices made only of sources that were

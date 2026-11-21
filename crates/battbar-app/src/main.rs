@@ -91,12 +91,13 @@ struct App {
     item: Option<Retained<NSStatusItem>>,
     /// Expanded item hidden by macOS → back to Collapsed (see overflow.rs).
     overflow: overflow::OverflowGuard,
-    /// What the item showed last (layout + segments) and the screen configuration, to
-    /// restart the overflow check when either changes.
+    /// What the item showed last (layout + segments), to restart the overflow check
+    /// when it changes.
     bar_key: String,
-    screens_key: String,
-    /// Last observed visibility (for the log).
-    last_visible: Option<bool>,
+    /// The overflow check's one-shot timer (none while the item is shown and settled).
+    overflow_timer: Option<Retained<objc2_foundation::NSTimer>>,
+    /// Occlusion notifications of the item's window: (window address, observer token).
+    occlusion_watch: Option<(usize, Retained<ProtocolObject<dyn NSObjectProtocol>>)>,
     /// IDs of the devices shown in the menu bar / device sections, in display order.
     shown: Vec<String>,
     actions: Vec<Action>,
@@ -714,12 +715,8 @@ impl App {
                 }
                 return None;
             }
-            Action::SetDisplayMode(m) => {
-                self.settings.display_mode = Some(m);
-                if m == DisplayMode::Expanded {
-                    self.overflow.changed(std::time::Instant::now());
-                }
-            }
+            // render() restarts or stops the overflow check (the layout changes).
+            Action::SetDisplayMode(m) => self.settings.display_mode = Some(m),
             Action::MoveDevice(id, delta) => {
                 self.settings.device_order = ui::move_device(&self.shown, &self.settings.device_order, &id, delta);
             }
@@ -1142,16 +1139,22 @@ impl App {
             self.layout(),
             view.segments.iter().map(|s| (s.symbol, &s.title, s.dimmed)).collect::<Vec<_>>()
         );
-        if key != self.bar_key {
-            self.bar_key = key;
-            self.overflow.changed(std::time::Instant::now());
-        }
+        let restart = key != self.bar_key;
+        self.bar_key = key;
         let it = self.status_item();
         if let Some(b) = it.button(self.mtm) {
             b.setImage(bar::image(&view).as_deref());
             b.setImagePosition(NSCellImagePosition::ImageOnly);
             b.setTitle(&ns(""));
             b.setToolTip(Some(&ns(&view.tooltip)));
+        }
+        self.watch_item_window();
+        if restart {
+            let timer = match self.settings.display_mode() {
+                DisplayMode::Expanded => self.overflow.changed(std::time::Instant::now()),
+                DisplayMode::Collapsed => self.overflow.disarm(),
+            };
+            self.overflow_apply(None, timer);
         }
         let menu = self.main_menu(&visible);
         #[cfg(debug_assertions)]
@@ -1199,32 +1202,109 @@ fn dump_menu(menu: &NSMenu, depth: usize) {
 }
 
 impl App {
-    /// Every 0.5 s while Expanded: is the item still shown? macOS hides a status item
-    /// that has no room (occlusion state without the visible bit; SPEC "Menu bar
-    /// display"). Hidden for 1 s → the setting goes back to Collapsed, with a
-    /// notification every time. battbar never expands by itself.
-    fn check_overflow(&mut self) {
-        if self.settings.display_mode() != DisplayMode::Expanded {
-            return;
-        }
-        let now = std::time::Instant::now();
-        let screens: String = objc2_app_kit::NSScreen::screens(self.mtm)
-            .iter()
-            .map(|s| format!("{:?}@{}", s.frame(), s.backingScaleFactor()))
-            .collect();
-        if screens != self.screens_key {
-            self.screens_key = screens;
-            self.overflow.changed(now);
-        }
+    // ------------------------------------------------- not enough space (overflow.rs)
+    //
+    // Event-driven: occlusion notifications of the item's window, screen changes and
+    // content changes feed the guard; it asks for at most one one-shot timer. Nothing
+    // runs periodically (SPEC "Menu bar display", DEVELOPMENT "Timers and wake-ups").
+
+    /// Whether macOS shows the item (the visible bit of its window's occlusion state).
+    fn item_visible(&self) -> Option<bool> {
+        let win = self.item.as_ref()?.button(self.mtm)?.window()?;
+        Some(win.occlusionState().0 & objc2_app_kit::NSWindowOcclusionState::Visible.0 != 0)
+    }
+
+    /// Subscribe to occlusion changes of the item's window; again if AppKit replaced
+    /// the window.
+    fn watch_item_window(&mut self) {
         let Some(win) = self.item.as_ref().and_then(|i| i.button(self.mtm)).and_then(|b| b.window()) else {
             return;
         };
-        let visible = win.occlusionState().0 & objc2_app_kit::NSWindowOcclusionState::Visible.0 != 0;
-        if std::env::var_os("BATTBAR_LOG").is_some() && Some(visible) != self.last_visible {
-            eprintln!("[{}] status item visible={visible} frame={:?}", local_time(), win.frame());
+        let addr = Retained::as_ptr(&win) as usize;
+        if self.occlusion_watch.as_ref().is_some_and(|(a, _)| *a == addr) {
+            return;
         }
-        self.last_visible = Some(visible);
-        match self.overflow.observe(now, visible) {
+        let center = objc2_foundation::NSNotificationCenter::defaultCenter();
+        if let Some((_, token)) = self.occlusion_watch.take() {
+            let token: &AnyObject = token.as_ref();
+            unsafe { center.removeObserver(token) };
+        }
+        let block = block2::RcBlock::new(|_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+            with_app(|a| a.on_occlusion());
+        });
+        let token = unsafe {
+            center.addObserverForName_object_queue_usingBlock(
+                Some(objc2_app_kit::NSWindowDidChangeOcclusionStateNotification),
+                Some(&win),
+                Some(&objc2_foundation::NSOperationQueue::mainQueue()),
+                &block,
+            )
+        };
+        self.occlusion_watch = Some((addr, token));
+    }
+
+    fn log_visibility(&self, why: &str, visible: bool) {
+        if std::env::var_os("BATTBAR_LOG").is_some() {
+            let frame = self
+                .item
+                .as_ref()
+                .and_then(|i| i.button(self.mtm))
+                .and_then(|b| b.window())
+                .map(|w| w.frame());
+            eprintln!("[{}] {why}: status item visible={visible} frame={frame:?}", local_time());
+        }
+    }
+
+    fn on_occlusion(&mut self) {
+        if self.settings.display_mode() != DisplayMode::Expanded {
+            return;
+        }
+        let Some(visible) = self.item_visible() else { return };
+        self.log_visibility("occlusion changed", visible);
+        let (outcome, timer) = self.overflow.occlusion(std::time::Instant::now(), visible);
+        self.overflow_apply(outcome, timer);
+    }
+
+    fn on_screens_changed(&mut self) {
+        if self.settings.display_mode() == DisplayMode::Expanded {
+            let timer = self.overflow.changed(std::time::Instant::now());
+            self.overflow_apply(None, timer);
+        }
+    }
+
+    fn overflow_fire(&mut self) {
+        self.overflow_timer = None;
+        if self.settings.display_mode() != DisplayMode::Expanded {
+            return;
+        }
+        let visible = self.item_visible().unwrap_or(true);
+        self.log_visibility("overflow check", visible);
+        let (outcome, timer) = self.overflow.fire(std::time::Instant::now(), visible);
+        self.overflow_apply(outcome, timer);
+    }
+
+    fn overflow_apply(&mut self, outcome: Option<overflow::Outcome>, timer: overflow::Timer) {
+        match timer {
+            overflow::Timer::Keep => {}
+            overflow::Timer::Cancel => {
+                if let Some(t) = self.overflow_timer.take() {
+                    t.invalidate();
+                }
+            }
+            overflow::Timer::At(at) => {
+                if let Some(t) = self.overflow_timer.take() {
+                    t.invalidate();
+                }
+                let secs = at.saturating_duration_since(std::time::Instant::now()).as_secs_f64().max(0.01);
+                let block = block2::RcBlock::new(|_t: std::ptr::NonNull<objc2_foundation::NSTimer>| {
+                    with_app(|a| a.overflow_fire());
+                });
+                // One-shot (repeats: false).
+                let t = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(secs, false, &block) };
+                self.overflow_timer = Some(t);
+            }
+        }
+        match outcome {
             Some(overflow::Outcome::Collapse) => {
                 if std::env::var_os("BATTBAR_LOG").is_some() {
                     eprintln!("[{}] expanded item hidden by macOS for 1 s: collapsing", local_time());
@@ -1360,13 +1440,15 @@ fn main() {
     // Discovery for automatic collapsing (see probe.rs). No devices, no settings.
     if let Some(i) = std::env::args().position(|a| a == "--probe-menu-bar") {
         let args: Vec<String> = std::env::args().skip(i + 1).collect();
-        let width = args
-            .iter()
-            .position(|a| a == "--width")
-            .and_then(|j| args.get(j + 1))
-            .and_then(|w| w.parse().ok())
-            .unwrap_or(120.0);
-        probe::run(width);
+        let num = |flag: &str| {
+            args.iter()
+                .position(|a| a == flag)
+                .and_then(|j| args.get(j + 1))
+                .and_then(|w| w.parse::<f64>().ok())
+        };
+        let width = num("--width").unwrap_or(120.0);
+        let grow = num("--grow").map(|w| (w, num("--after").unwrap_or(10.0)));
+        probe::run(width, grow);
         return;
     }
     // Development: render the status item for sample devices (all layouts) as PNGs.
@@ -1408,8 +1490,8 @@ fn main() {
         item: None,
         overflow: overflow::OverflowGuard::default(),
         bar_key: String::new(),
-        screens_key: String::new(),
-        last_visible: None,
+        overflow_timer: None,
+        occlusion_watch: None,
         shown: vec![],
         actions: vec![],
         tx,
@@ -1432,10 +1514,18 @@ fn main() {
     APP.with(|c| *c.borrow_mut() = Some(state));
     forget_old_status_items();
     with_app(|a| a.render());
-    let overflow_tick = block2::RcBlock::new(|_t: std::ptr::NonNull<objc2_foundation::NSTimer>| {
-        with_app(|a| a.check_overflow());
+    // Screens or resolution changed: the item is placed again; restart the check.
+    let screens_changed = block2::RcBlock::new(|_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+        with_app(|a| a.on_screens_changed());
     });
-    let _overflow_timer = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.5, true, &overflow_tick) };
+    let _screens_observer = unsafe {
+        objc2_foundation::NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+            Some(objc2_app_kit::NSApplicationDidChangeScreenParametersNotification),
+            None,
+            Some(&objc2_foundation::NSOperationQueue::mainQueue()),
+            &screens_changed,
+        )
+    };
     notify::request_authorization();
     // First-run question, once the run loop is up. Postponed while App Translocation is
     // active (a login item registered from the randomised copy would break); answered
@@ -1477,6 +1567,29 @@ fn main() {
 #[cfg(test)]
 mod status_item_tests {
     use super::*;
+
+    /// The app never schedules a repeating timer (energy: no periodic wake-ups); only
+    /// the diagnostic probe does. Checked in the sources.
+    #[test]
+    fn no_repeating_timers_in_the_app() {
+        let sources = [
+            ("main.rs", include_str!("main.rs")),
+            ("bar.rs", include_str!("bar.rs")),
+            ("overflow.rs", include_str!("overflow.rs")),
+            ("ui.rs", include_str!("ui.rs")),
+            ("worker.rs", include_str!("worker.rs")),
+            ("alerts.rs", include_str!("alerts.rs")),
+            ("updates.rs", include_str!("updates.rs")),
+        ];
+        let call = concat!("scheduledTimerWithTimeInterval_repeats", "_block(");
+        for (name, src) in sources {
+            for (i, _) in src.match_indices(call) {
+                let args: String = src[i + call.len()..].chars().take_while(|c| *c != ')').collect();
+                let repeats = args.split(',').nth(1).map(str::trim);
+                assert_eq!(repeats, Some("false"), "{name}: repeating NSTimer: {args}");
+            }
+        }
+    }
 
     #[test]
     fn only_the_old_per_device_items_are_forgotten() {

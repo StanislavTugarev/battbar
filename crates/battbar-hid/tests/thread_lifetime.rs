@@ -23,12 +23,19 @@ fn enumerate_after_the_initialising_thread_exited() {
     }
 }
 
-/// The HID service thread services its run loop (IOKit events on the manager are
-/// handled, not queued forever).
+/// A job sent while the service thread is busy or about to wait is never lost.
 #[test]
-fn service_thread_runs_its_run_loop() {
-    let _ = battbar_hid::enumerate();
-    let t0 = battbar_hid::service_run_loop_ticks();
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    assert!(battbar_hid::service_run_loop_ticks() >= t0 + 3, "run loop not serviced");
+fn many_jobs_from_many_threads_all_complete() {
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            std::thread::spawn(|| {
+                for _ in 0..25 {
+                    let _ = battbar_hid::enumerate();
+                }
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().expect("enumerate thread");
+    }
 }

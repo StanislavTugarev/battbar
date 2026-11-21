@@ -84,7 +84,7 @@ Audit (0.2.0):
 
 | Object | Bound to | Lifetime | Status |
 |---|---|---|---|
-| hidapi `IOHIDManager` (enumerate, open) | run loop of the **HID service thread** (`battbar-hid`) | whole process; every hidapi call runs on it as a job; it services its run loop (`CFRunLoopRunInMode`, every ≤ 20 ms) so IOKit events do not pile up | fixed in 0.2.0 (tests: `thread_lifetime.rs`) |
+| hidapi `IOHIDManager` (enumerate, open) | run loop of the **HID service thread** (`battbar-hid`) | whole process; every hidapi call runs on it as a job; between jobs it sleeps in its run loop until IOKit has an event or a job signals its own run loop source (0.2–0.3: woke every 20 ms) | fixed in 0.2.0, event-driven since 0.4.0 (tests: `thread_lifetime.rs`, `service_idle.rs`) |
 | hidapi per-device read threads | their own run loops, created and stopped by hidapi (`hid_open_path` / `hid_close` unschedules before the thread ends) | per open device | hidapi-internal, correct |
 | `CBCentralManager` + delegate | a private serial **dispatch queue** owned by the static `Central` | whole process (not tied to the calling thread) | safe |
 | `GattSession` | std channels fed by the central's queue | per session | safe |
@@ -102,6 +102,39 @@ Paths that could recreate threads:
 - **CLI** — one engine per process; `battbar debug-rebuild N` (hidden) rebuilds all
   providers N times with Bluetooth as a stress test (25 rounds pass on the reference
   hardware).
+
+## Timers and wake-ups (rule)
+
+**The app does nothing periodically faster than every few seconds while idle.** A
+menu bar app runs all day; on a notebook every wake-up costs energy and keeps macOS
+from coalescing timers and from App Nap. Prefer notifications and one-shot timers;
+the app has no repeating `NSTimer` (test `no_repeating_timers_in_the_app`).
+
+| What | Period | Why |
+|---|---|---|
+| HID service thread | none — sleeps in its run loop until an IOKit event or a job | 0.3 polled every 20 ms (~45 context switches/s measured); fixed in 0.4 |
+| "Not enough space" check | none — occlusion and screen-change notifications, at most one one-shot timer (1 s) after a change | 0.4 rc.3 polled every 0.5 s; replaced before release |
+| Battery poll (worker) | the user's interval, 30 s – 5 min (default 60 s) | the batteries are read; nothing pushes battery levels for all devices |
+| Device events (worker → providers) | **2 s**; hotplug scan every 10 s, Bluetooth connections every 6 s | kept, see below |
+| Follow-up polls (new device settling, learned link) | one-shot, 3–4 s after the event | — |
+| Update check | once a day, only if turned on | — |
+| Child processes (`system_profiler`, `headsetcontrol`, the classic-battery helper) | wait in 10–50 ms steps, **only while one runs during a poll** (≤ 5 s) | `std::process::Child` has no wait-with-timeout; bounded, never while idle |
+| HID++ / GATT request timeouts (1.5–2 s) | one wait per request, only during a poll | — |
+| `--probe-menu-bar` | 0.5 s | diagnostic tool, not the app |
+
+**The 2 s device-event check** (kept, with reason): it drains HID++ notifications
+that hidapi has already buffered (device connected/disconnected on a receiver, battery
+or charging events) — hidapi offers no callback for them, so they can only be seen by
+asking. The check does no device I/O (only reading buffers; the hotplug enumeration
+every 5th check and the IOBluetooth list every 3rd are the expensive parts) and makes
+a device that is switched on or plugged in appear within ~2 s. Measured on the
+reference Mac mini (2026-11-21, `top -stats csw`, 30 s idle): the whole app ~5.5
+context switches/s after the 0.4 changes, against ~45/s for 0.3. Making it
+event-driven (a blocking reader per HID++ link, IOHIDManager matching callbacks,
+IOBluetooth notifications) is in the SPEC backlog.
+
+Measure with `top -l 2 -s 30 -stats pid,csw,time -pid <pid>` (the difference in
+`CSW` between the two samples; `IDLEW` is cumulative and coalesced, not useful here).
 
 ## Code signing and macOS permissions (TCC)
 
