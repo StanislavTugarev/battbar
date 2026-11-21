@@ -11,7 +11,7 @@ publish = false
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSString", "NSData", "NSError", "NSUUID", "NSKeyValueCoding", "NSValue", "NSObject", "NSDictionary", "NSBundle", "NSURL"] }
 objc2-core-bluetooth = { version = "0.3", features = ["CBCentralManager", "CBPeripheral", "CBService", "CBCharacteristic", "CBUUID", "CBManager", "CBPeer", "CBAttribute", "dispatch2"] }
-objc2-io-bluetooth = { version = "0.3", features = ["IOBluetoothDevice", "objc2-foundation"] }
+objc2-io-bluetooth = { version = "0.3", features = ["IOBluetoothDevice", "IOBluetoothUserNotification", "objc2-foundation"] }
 dispatch2 = "0.3"
 libc = "0.2"
 

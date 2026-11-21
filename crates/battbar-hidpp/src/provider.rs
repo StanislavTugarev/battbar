@@ -52,7 +52,8 @@ pub struct HidppProvider {
     links: BTreeMap<String, OpenLink>,
     trace: Option<Arc<Mutex<TraceWriter>>>,
     errors: Vec<String>,
-    checks: u64,
+    /// Safety re-scan for links (hotplug notifications do the real work).
+    rescan: battbar_core::Rescan,
     /// Diagnostic mode: no register writes at all (see `Channel::read_only`).
     read_only: bool,
 }
@@ -65,7 +66,7 @@ impl HidppProvider {
             links: BTreeMap::new(),
             trace: None,
             errors: vec![],
-            checks: 0,
+            rescan: battbar_core::Rescan::default(),
             read_only: false,
         }
     }
@@ -104,6 +105,7 @@ impl HidppProvider {
     }
 
     fn refresh_links(&mut self) {
+        self.rescan.scanned(std::time::Instant::now());
         let mut present = BTreeSet::new();
         let mut cands = vec![];
         for s in &mut self.sources {
@@ -138,6 +140,35 @@ impl HidppProvider {
             }
         }
         self.links.retain(|id, l| present.contains(id) && !l.broken);
+    }
+
+    /// Set the safety re-scan interval (tests).
+    pub fn set_rescan_interval(&mut self, every: std::time::Duration) {
+        self.rescan.every = every;
+    }
+
+    /// Notifications on open links, and a link set that changed (safety re-scan).
+    pub fn check_events_at(&mut self, now: std::time::Instant) -> bool {
+        let mut any = false;
+        for link in self.links.values_mut() {
+            if let Err(HidppError::Transport(TransportError::Disconnected)) = link.ch.drain() {
+                link.broken = true;
+                any = true;
+            }
+            let notes = std::mem::take(&mut link.ch.notifications);
+            any |= notes.iter().any(|n| Self::relevant(link, n));
+        }
+        // Hotplug: notifications trigger checks; a re-scan only as a rare safety net.
+        if self.rescan.due(now) {
+            let mut ids: Vec<String> = vec![];
+            for s in &mut self.sources {
+                ids.extend(s.scan(&self.db).into_iter().map(|c| c.id));
+            }
+            ids.sort();
+            let open: Vec<String> = self.links.keys().cloned().collect();
+            any |= ids != open;
+        }
+        any
     }
 
     fn device_def(&self, vid: u16, pids: &[u16]) -> Option<&devicedb::DeviceDef> {
@@ -193,27 +224,7 @@ impl BatteryProvider for HidppProvider {
     }
 
     fn check_events(&mut self) -> bool {
-        self.checks += 1;
-        let mut any = false;
-        for link in self.links.values_mut() {
-            if let Err(HidppError::Transport(TransportError::Disconnected)) = link.ch.drain() {
-                link.broken = true;
-                any = true;
-            }
-            let notes = std::mem::take(&mut link.ch.notifications);
-            any |= notes.iter().any(|n| Self::relevant(link, n));
-        }
-        // Hotplug: every 5th check, compare the set of available links.
-        if self.checks.is_multiple_of(5) {
-            let mut ids: Vec<String> = vec![];
-            for s in &mut self.sources {
-                ids.extend(s.scan(&self.db).into_iter().map(|c| c.id));
-            }
-            ids.sort();
-            let open: Vec<String> = self.links.keys().cloned().collect();
-            any |= ids != open;
-        }
-        any
+        self.check_events_at(std::time::Instant::now())
     }
 
     fn diagnostics(&mut self) -> serde_json::Value {

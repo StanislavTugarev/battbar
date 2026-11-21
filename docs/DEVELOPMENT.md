@@ -88,7 +88,9 @@ Audit (0.2.0):
 | hidapi per-device read threads | their own run loops, created and stopped by hidapi (`hid_open_path` / `hid_close` unschedules before the thread ends) | per open device | hidapi-internal, correct |
 | `CBCentralManager` + delegate | a private serial **dispatch queue** owned by the static `Central` | whole process (not tied to the calling thread) | safe |
 | `GattSession` | std channels fed by the central's queue | per session | safe |
-| IOBluetooth (`pairedDevices`, properties) | nothing registered: no notifications, delegates or async calls (checked: no run loop sources appear on the calling thread) | synchronous calls on the bt-system provider thread; battery values in a short-lived helper process (`battbar classic-batteries`), because a process gets them only during its first ~2 s | safe; if notifications are ever added, register them on a long-lived thread that runs its run loop |
+| IOBluetooth (`pairedDevices`, properties) | nothing registered (checked: no run loop sources appear on the calling thread) | synchronous calls on the bt-system provider thread; battery values in a short-lived helper process (`battbar classic-batteries`), because a process gets them only during its first ~2 s | safe |
+| IOBluetooth connect/disconnect notifications (`battbar_macos::connections`) | run loop of the **main thread** | whole process; registered once Bluetooth permission is granted | safe (0.5) |
+| HID hotplug IOHIDManager (`battbar_hid` hotplug, matches every HID device, opens none) | run loop of the **HID service thread** | whole process | safe (0.5; tests: `hotplug.rs`) |
 | `NSStatusItem`, menus, `UNUserNotificationCenter`, `SMAppService` | main thread / main queue | whole process | safe |
 
 Paths that could recreate threads:
@@ -113,25 +115,46 @@ the app has no repeating `NSTimer` (test `no_repeating_timers_in_the_app`).
 | What | Period | Why |
 |---|---|---|
 | HID service thread | none — sleeps in its run loop until an IOKit event or a job | 0.3 polled every 20 ms (~45 context switches/s measured); fixed in 0.4 |
-| "Not enough space" check | none — occlusion and screen-change notifications, at most one one-shot timer (1 s) after a change | 0.4 rc.3 polled every 0.5 s; replaced before release |
-| Battery poll (worker) | the user's interval, 30 s – 5 min (default 60 s) | the batteries are read; nothing pushes battery levels for all devices |
-| Device events (worker → providers) | **2 s**; hotplug scan every 10 s, Bluetooth connections every 6 s | kept, see below |
-| Follow-up polls (new device settling, learned link) | one-shot, 3–4 s after the event | — |
+| HID hotplug (receivers, base stations, Bluetooth HID devices) | none — IOHIDManager matching/removal callbacks on the HID service thread (0.5) | — |
+| Bluetooth connections (classic, e.g. headsets) | none — IOBluetooth connect/disconnect notifications on the main thread (0.5) | — |
+| "Not enough space" check | none — occlusion and screen-change notifications, at most one one-shot timer (1 s, tolerance 0.1 s) after a change | 0.4 rc.3 polled every 0.5 s; replaced before release |
+| Battery poll (worker) | the user's interval, 30 s – 5 min (default 60 s); GCD timer, leeway 15 % (≤ 15 s) | the batteries are read; nothing pushes battery levels for all devices |
+| Device events (worker → providers) | **2 s**, GCD timer, leeway 0.3 s | kept, see below |
+| Safety re-scans (HID links, base stations, Bluetooth connections) | 5 min, counted from the last poll | catches a missed hotplug notification (`Rescan`, test `a_missed_hotplug_is_caught_by_the_safety_rescan_only`) |
+| Follow-up polls (hotplug debounce 0.3 s, new device settling, learned link) | one-shot, 0.3–4 s after the event | — |
 | Update check | once a day, only if turned on | — |
 | Child processes (`system_profiler`, `headsetcontrol`, the classic-battery helper) | wait in 10–50 ms steps, **only while one runs during a poll** (≤ 5 s) | `std::process::Child` has no wait-with-timeout; bounded, never while idle |
 | HID++ / GATT request timeouts (1.5–2 s) | one wait per request, only during a poll | — |
-| `--probe-menu-bar` | 0.5 s | diagnostic tool, not the app |
+| `--probe-menu-bar`, `battbar debug-events` | 0.5 s / run loop for N s | diagnostic tools, not the app |
+
+The worker sleeps on its command channel without a timeout; one GCD timer source
+(`WakeTimer`, re-armed one-shot for the next time the schedule needs) wakes it with a
+leeway of 15 % of the period, so macOS can coalesce it with other wake-ups.
 
 **The 2 s device-event check** (kept, with reason): it drains HID++ notifications
 that hidapi has already buffered (device connected/disconnected on a receiver, battery
 or charging events) — hidapi offers no callback for them, so they can only be seen by
-asking. The check does no device I/O (only reading buffers; the hotplug enumeration
-every 5th check and the IOBluetooth list every 3rd are the expensive parts) and makes
-a device that is switched on or plugged in appear within ~2 s. Measured on the
-reference Mac mini (2026-11-21, `top -stats csw`, 30 s idle): the whole app ~5.5
-context switches/s after the 0.4 changes, against ~45/s for 0.3. Making it
-event-driven (a blocking reader per HID++ link, IOHIDManager matching callbacks,
-IOBluetooth notifications) is in the SPEC backlog.
+asking. It does no device I/O and makes a device that is switched on behind a receiver
+appear within ~2 s. Making it event-driven needs a blocking reader per HID++ link
+(SPEC backlog).
+
+**Idle wake-ups by thread** (reference Mac mini, 2026-11-21, Instruments *System
+Trace*, 30 s between polls, Running intervals per thread of `battbar-app`):
+
+| Thread | 0.4.0 | 0.5.0 | Source |
+|---|---|---|---|
+| `battbar-hid-service` | 1.73/s | 0 | 0.4: jobs of the 10 s HID re-scan; 0.5: only hotplug events and jobs of polls |
+| `battbar-hidpp` | 1.57/s | 0.20/s | 2 s check (+ 10 s re-scan in 0.4) |
+| `battbar-steelseries` | 1.37/s | 0.13/s | same |
+| `battbar-bt-system` | 0.80/s | 0.13/s | same (+ 6 s Bluetooth list in 0.4) |
+| main thread | 0.77/s | 0 | renders after polls only |
+| `battbar-worker` | 0.40/s | 0.37/s | wakes for the 2 s check |
+| unnamed (GCD workers: the wake-up timer, CoreBluetooth queue; hidapi read threads) | ~2.6/s | ~1.0/s | |
+| **total** | **9.2/s** | **1.8/s** | |
+
+Including the minute polls (`top`, 120 s, both builds side by side): 8.7 vs 6.6
+context switches/s — the polls themselves (device I/O, the classic-battery helper
+process) are now the larger part; the poll interval is the user's setting.
 
 Measure with `top -l 2 -s 30 -stats pid,csw,time -pid <pid>` (the difference in
 `CSW` between the two samples; `IDLEW` is cumulative and coalesced, not useful here).

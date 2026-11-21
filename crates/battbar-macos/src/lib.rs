@@ -11,4 +11,6 @@ pub mod bundle;
 #[cfg(target_os = "macos")]
 pub mod classic;
 #[cfg(target_os = "macos")]
+pub mod connections;
+#[cfg(target_os = "macos")]
 pub mod tcc;

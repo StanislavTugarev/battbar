@@ -112,7 +112,8 @@ pub struct SteelSeriesProvider {
     /// flips it at runtime instead of rebuilding the provider (and its thread).
     headsetcontrol: Arc<std::sync::atomic::AtomicBool>,
     errors: Vec<String>,
-    checks: u64,
+    /// Safety re-scan for base stations (hotplug notifications do the real work).
+    rescan: battbar_core::Rescan,
 }
 
 const TIMEOUT: Duration = Duration::from_millis(1500);
@@ -126,7 +127,7 @@ impl SteelSeriesProvider {
             trace: None,
             headsetcontrol: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             errors: vec![],
-            checks: 0,
+            rescan: battbar_core::Rescan::default(),
         }
     }
 
@@ -145,6 +146,7 @@ impl SteelSeriesProvider {
     }
 
     fn refresh(&mut self) {
+        self.rescan.scanned(std::time::Instant::now());
         let mut present = vec![];
         let mut cands = vec![];
         for s in &mut self.sources {
@@ -251,8 +253,8 @@ impl BatteryProvider for SteelSeriesProvider {
     }
 
     fn check_events(&mut self) -> bool {
-        self.checks += 1;
-        if !self.checks.is_multiple_of(5) {
+        // Hotplug notifications trigger polls; a re-scan only as a rare safety net.
+        if !self.rescan.due(std::time::Instant::now()) {
             return false;
         }
         let mut ids: Vec<String> = vec![];

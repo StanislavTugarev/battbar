@@ -8,7 +8,9 @@ Quits the running battbar, starts the given app with BATTBAR_LOG=1 (its poll log
 stderr goes to a temporary file) and walks through the scenarios below. For each one:
 press Enter at the moment you act (switch the device on/off, plug/unplug); the script
 waits until the poll log shows the expected state and prints the delay. `s` skips a
-scenario. The app is started normally again at the end.
+scenario. The app is started normally again at the end. If the poll log already
+showed the new state before Enter (you pressed late, or a poll happened between the
+action and Enter), the scenario is recorded as `already` instead of a time.
 
 The log line of a poll is written right before the menu bar is redrawn, so the time
 it arrives is the time the change is visible (a device that is new to the running app
@@ -46,10 +48,19 @@ HEADER = re.compile(r"^\[\d\d:\d\d:\d\d\] input_monitoring=")
 DEVICE = re.compile(r"^  (?P<name>.+?) \[(?P<kind>\w+)\] (?P<status>.*?) via \[(?P<via>[^\]]*)\]")
 
 
-def quit_battbar():
-    subprocess.run(["osascript", "-e", 'tell application id "io.github.battbar" to quit'], capture_output=True)
+def plist(app, key):
+    return subprocess.run(
+        ["/usr/libexec/PlistBuddy", "-c", f"Print {key}", f"{app}/Contents/Info.plist"], capture_output=True, text=True
+    ).stdout.strip()
+
+
+def quit_app(app):
+    """Quit the app under test (by its bundle ID: release or development build)."""
+    bid = plist(app, "CFBundleIdentifier")
+    subprocess.run(["osascript", "-e", f'tell application id "{bid}" to quit'], capture_output=True)
+    exe = os.path.realpath(f"{app}/Contents/MacOS/battbar-app")
     for _ in range(50):
-        if subprocess.run(["pgrep", "-f", "battbar.app/Contents/MacOS/battbar-app"], capture_output=True).returncode:
+        if subprocess.run(["pgrep", "-f", exe], capture_output=True).returncode:
             return
         time.sleep(0.1)
 
@@ -62,6 +73,7 @@ class Log:
         self.buf = ""
         self.block = None  # (arrival, [device lines])
         self.last_line = 0.0
+        self.latest = []  # device lines of the last complete block
 
     def blocks(self):
         """Complete blocks read so far (a block ends at the next header or after
@@ -83,6 +95,8 @@ class Log:
         if self.block and now - self.last_line > 0.3:
             out.append(self.block)
             self.block = None
+        if out:
+            self.latest = out[-1][1]
         return out
 
 
@@ -108,12 +122,10 @@ def main():
     ap.add_argument("--out", default="hotplug-results.tsv")
     ap.add_argument("--timeout", type=float, default=120.0)
     a = ap.parse_args()
-    version = subprocess.run(
-        ["/usr/libexec/PlistBuddy", "-c", "Print CFBundleShortVersionString", f"{a.app}/Contents/Info.plist"],
-        capture_output=True, text=True).stdout.strip()
+    version = plist(a.app, "BattbarVersion") or plist(a.app, "CFBundleShortVersionString")
     log_path = tempfile.mktemp(prefix="battbar-hotplug-", suffix=".log")
     print(f"battbar {version} from {a.app}\nlog: {log_path}")
-    quit_battbar()
+    quit_app(a.app)
     subprocess.run(["open", "--env", "BATTBAR_LOG=1", "--stderr", log_path, a.app], check=True)
     while not os.path.exists(log_path):
         time.sleep(0.1)
@@ -131,7 +143,11 @@ def main():
                 results.append((prompt, expected, "skipped"))
                 continue
             t0 = time.monotonic()
-            log.blocks()  # drop what came before the action
+            log.blocks()  # what came before the action
+            if state(log.latest, name, expected):
+                print("  -> already shown before Enter (not timed)")
+                results.append((prompt, expected, "already"))
+                continue
             took = None
             while time.monotonic() - t0 < a.timeout:
                 for arrival, lines in log.blocks():
@@ -150,7 +166,7 @@ def main():
             for r in results:
                 f.write("\t".join(r) + "\n")
         print(f"\nResults: {os.path.abspath(a.out)}")
-        quit_battbar()
+        quit_app(a.app)
         subprocess.run(["open", a.app])
 
 

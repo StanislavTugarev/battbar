@@ -21,6 +21,6 @@ pub use ids::keyed_hash;
 pub use learner::LinkLearner;
 pub use merge::{merge, Device, IdentityMemory, MergeConfig, NewDeviceGate};
 pub use model::*;
-pub use provider::{BatteryProvider, Engine, EventSink, PollResult};
+pub use provider::{BatteryProvider, Engine, EventSink, PollResult, Rescan, SAFETY_RESCAN};
 pub use settings::{DisplayMode, LearnedLink, Settings};
 pub use transport::{FrameTransport, LinkInfo, TransportError};

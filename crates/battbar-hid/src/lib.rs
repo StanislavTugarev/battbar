@@ -235,6 +235,9 @@ fn service() -> &'static Service {
                 };
                 #[cfg(not(target_os = "macos"))]
                 let waker = Waker {};
+                // HID hotplug notifications on this thread's run loop (see `on_hotplug`).
+                #[cfg(target_os = "macos")]
+                hotplug::install();
                 let _ = ready_tx.send(waker);
                 let mut api = new_api();
                 loop {
@@ -260,6 +263,76 @@ fn service() -> &'static Service {
         let waker = ready_rx.recv().expect("HID service thread started");
         Service { tx: Mutex::new(tx), waker }
     })
+}
+
+// ------------------------------------------------------------------ hotplug
+//
+// A second IOHIDManager on the service thread's run loop, matching every HID device and
+// **never opening any** (like hidapi's own manager; no Input Monitoring needed): its
+// matching/removal callbacks say "a HID device appeared or disappeared" — a receiver or
+// base station on USB, and also Bluetooth LE / classic HID devices (keyboards, mice,
+// gamepads), which macOS represents as HID devices too. Listeners only get that signal
+// and re-check; nothing about the device is read here. On registration the manager
+// reports every device already present once.
+
+static HOTPLUG_EVENTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+type Listener = Box<dyn Fn() + Send>;
+static LISTENERS: Mutex<Vec<Listener>> = Mutex::new(Vec::new());
+
+/// HID devices that appeared or disappeared so far (the initial report of devices
+/// present at start included).
+pub fn hotplug_events() -> u64 {
+    HOTPLUG_EVENTS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Call `f` whenever a HID device appears or disappears (on the HID service thread;
+/// keep it short, e.g. send on a channel). Starts the service thread if needed.
+pub fn on_hotplug(f: impl Fn() + Send + 'static) {
+    LISTENERS.lock().unwrap().push(Box::new(f));
+    let _ = service();
+}
+
+fn hotplug_event() {
+    HOTPLUG_EVENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if let Ok(ls) = LISTENERS.lock() {
+        for l in ls.iter() {
+            l();
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod hotplug {
+    use std::ffi::c_void;
+
+    type Callback = extern "C" fn(*mut c_void, i32, *mut c_void, *mut c_void);
+
+    #[link(name = "IOKit", kind = "framework")]
+    extern "C" {
+        fn IOHIDManagerCreate(allocator: *const c_void, options: u32) -> *mut c_void;
+        fn IOHIDManagerSetDeviceMatching(manager: *mut c_void, matching: *const c_void);
+        fn IOHIDManagerRegisterDeviceMatchingCallback(manager: *mut c_void, callback: Callback, context: *mut c_void);
+        fn IOHIDManagerRegisterDeviceRemovalCallback(manager: *mut c_void, callback: Callback, context: *mut c_void);
+        fn IOHIDManagerScheduleWithRunLoop(manager: *mut c_void, run_loop: *const c_void, mode: *const c_void);
+    }
+
+    extern "C" fn changed(_ctx: *mut c_void, _result: i32, _sender: *mut c_void, _device: *mut c_void) {
+        super::hotplug_event();
+    }
+
+    /// On the service thread, once. The manager lives for the whole process.
+    pub fn install() {
+        unsafe {
+            let m = IOHIDManagerCreate(std::ptr::null(), 0);
+            if m.is_null() {
+                return;
+            }
+            IOHIDManagerSetDeviceMatching(m, std::ptr::null()); // every HID device
+            IOHIDManagerRegisterDeviceMatchingCallback(m, changed, std::ptr::null_mut());
+            IOHIDManagerRegisterDeviceRemovalCallback(m, changed, std::ptr::null_mut());
+            IOHIDManagerScheduleWithRunLoop(m, super::cf::CFRunLoopGetCurrent(), super::cf::kCFRunLoopDefaultMode);
+        }
+    }
 }
 
 /// Run `f` on the HID service thread and wait for its result.

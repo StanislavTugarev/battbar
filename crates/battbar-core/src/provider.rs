@@ -11,6 +11,47 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// How often providers re-scan for links on their own, as a safety net: since 0.5
+/// hotplug notifications (IOHIDManager, IOBluetooth) trigger the checks; this only
+/// catches an event that was missed.
+pub const SAFETY_RESCAN: Duration = Duration::from_secs(300);
+
+/// A rare re-scan, counted from the last scan (every poll scans anyway).
+#[derive(Debug, Clone)]
+pub struct Rescan {
+    pub every: Duration,
+    last: Instant,
+}
+
+impl Rescan {
+    pub fn new(every: Duration) -> Self {
+        Rescan {
+            every,
+            last: Instant::now(),
+        }
+    }
+
+    /// Time for a safety re-scan (then counts from `now`).
+    pub fn due(&mut self, now: Instant) -> bool {
+        if now.saturating_duration_since(self.last) >= self.every {
+            self.last = now;
+            return true;
+        }
+        false
+    }
+
+    /// A scan just happened (a poll).
+    pub fn scanned(&mut self, now: Instant) {
+        self.last = now;
+    }
+}
+
+impl Default for Rescan {
+    fn default() -> Self {
+        Rescan::new(SAFETY_RESCAN)
+    }
+}
+
 /// Called by a provider when it learns that something changed (push notification,
 /// hotplug); the front-end usually reacts with a new poll.
 pub type EventSink = Arc<dyn Fn(&str) + Send + Sync>;

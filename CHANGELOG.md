@@ -8,9 +8,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Plugged-in receivers and base stations, and Bluetooth devices that connect or
+  disconnect, are noticed through macOS hotplug and Bluetooth connection notifications
+  instead of a re-scan every 6–10 s (a plugged-in receiver could take over a minute to
+  appear in 0.4). A re-scan every 5 minutes remains as a safety net.
 - Release candidates know their full version (e.g. `0.5.0-rc.1`): shown at the bottom
   of the menu, by `battbar --version` and in `battbar dump`. A candidate offers the
   final release as an update once it is out (before, both counted as `0.5.0`).
+
+### Changed
+
+- Fewer wake-ups while idle (between polls about 1.8 instead of 9 per second on the
+  reference Mac): hotplug by notifications, and the remaining periodic timers allow
+  macOS to coalesce them.
 
 ## [0.4.0] - 2026-11-21
 

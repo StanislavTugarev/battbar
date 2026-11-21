@@ -401,6 +401,25 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   peripheral ↔ HID++ unit ID) is stored in the settings as hashes only. Device IDs in
   the settings are hashes as well.
 
+### Hotplug (0.5)
+
+- **HID**: an IOHIDManager on the HID service thread's run loop matches every HID
+  device and opens none (no Input Monitoring); its matching/removal callbacks tell the
+  worker "a HID device appeared or disappeared" — receivers and base stations on USB,
+  and Bluetooth LE / classic HID devices, which macOS represents as HID devices too.
+- **Bluetooth**: IOBluetooth connect notifications (and a disconnect notification per
+  connected device), registered on the main thread once Bluetooth permission is
+  granted — for classic audio devices that are not HID (headsets).
+- The worker polls **0.3 s** after such a notification (a burst gives one poll); the
+  poll log names the reason (`interval`, `hid`, `bluetooth`, `device event`,
+  `follow-up`, `refresh`).
+- Bluetooth LE devices that are not HID (only a Battery Service) appear at the next
+  poll.
+- **Safety re-scans** every 5 min (HID links, base stations, Bluetooth connections),
+  counted from the last poll, catch a missed notification.
+- Periodic waits use timers with leeway (worker: GCD timer, 15 %).
+- Measurements before/after: DISCOVERY "Hotplug and wake-ups (0.5)".
+
 ### Menu bar display (0.4)
 
 - **One status item** (`NSVariableStatusItemLength`, autosave name `battbar`, so a
@@ -523,11 +542,10 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
-- **Device events without the 2 s check.** The worker asks the providers every 2 s
-  whether something happened (buffered HID++ notifications, hotplug every 10 s,
-  Bluetooth connections every 6 s; DEVELOPMENT "Timers and wake-ups"). Event-driven
-  instead: a blocking reader per HID++ link that wakes the worker, IOHIDManager
-  matching callbacks for hotplug, IOBluetooth connect notifications.
+- **Device events without the 2 s check.** Hotplug is event-driven since 0.5; the
+  worker still asks the providers every 2 s for buffered HID++ notifications (a device
+  switched on/off behind a receiver, charging events). Event-driven instead: a blocking
+  reader per HID++ link that wakes the worker.
 - **Compact step.** Between Expanded and Collapsed: icons only, a percentage only at
   or below the low-battery threshold — for menu bars where the full island does not
   fit but icons would. Needs a rule for growing back without a loop (items hidden by

@@ -161,7 +161,9 @@ pub fn sp_fallback_reports(sp: &[SpDevice], covered_names: &[String]) -> Vec<Dev
 pub struct BtSystemProvider {
     sp_cache: Option<(Instant, Vec<SpDevice>)>,
     last_connected: Option<Vec<String>>,
-    checks: u64,
+    /// Safety re-check of connections (IOBluetooth notifications and HID hotplug do the
+    /// real work in the app).
+    rescan: battbar_core::Rescan,
     errors: Vec<String>,
     /// Show/hide is a front-end decision; the provider always reports.
     pub sp_refresh: Duration,
@@ -172,7 +174,7 @@ impl Default for BtSystemProvider {
         BtSystemProvider {
             sp_cache: None,
             last_connected: None,
-            checks: 0,
+            rescan: battbar_core::Rescan::default(),
             errors: vec![],
             sp_refresh: Duration::from_secs(300),
         }
@@ -198,6 +200,7 @@ impl BatteryProvider for BtSystemProvider {
     }
 
     fn poll(&mut self) -> Vec<DeviceReport> {
+        self.rescan.scanned(Instant::now());
         use battbar_macos::ble::{Central, GattSession};
         let mut out = vec![];
         self.errors.clear();
@@ -270,10 +273,11 @@ impl BatteryProvider for BtSystemProvider {
         out
     }
 
-    /// Connect/disconnect of Bluetooth devices (every 3rd check).
+    /// Connect/disconnect of Bluetooth devices, as a rare safety net: the app learns them
+    /// from IOBluetooth connect notifications (classic) and HID hotplug (Bluetooth HID
+    /// devices). Bluetooth LE devices that are not HID are seen at the next poll.
     fn check_events(&mut self) -> bool {
-        self.checks += 1;
-        if !self.checks.is_multiple_of(3) || !battbar_macos::ble::is_authorized() {
+        if !self.rescan.due(Instant::now()) || !battbar_macos::ble::is_authorized() {
             return false;
         }
         let mut now: Vec<String> = battbar_macos::classic::paired_devices()

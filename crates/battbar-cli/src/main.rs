@@ -47,6 +47,13 @@ enum Cmd {
     /// Step-by-step Bluetooth diagnostics (development).
     #[command(hide = true)]
     DebugBt,
+    /// Hotplug notifications (development): print HID devices appearing/disappearing and
+    /// Bluetooth connects/disconnects for N seconds (main thread run loop). Read-only.
+    #[command(hide = true)]
+    DebugEvents {
+        #[arg(long, default_value_t = 30)]
+        seconds: u64,
+    },
     /// Stress test (development): rebuild all providers N times and poll at once each
     /// time, to catch objects bound to threads that exit. Read-only.
     #[command(hide = true)]
@@ -403,6 +410,35 @@ fn main() {
             }
             eprintln!("ok: {rounds} rebuilds, bluetooth={bt}");
             std::process::exit(0);
+        }
+        Cmd::DebugEvents { seconds } => {
+            let bt = bluetooth_available(&cli);
+            let start = std::time::Instant::now();
+            battbar_hid::on_hotplug(move || println!("[{:>6.2}s] hid device appeared or disappeared", start.elapsed().as_secs_f64()));
+            #[cfg(target_os = "macos")]
+            {
+                if bt {
+                    let mtm = objc2::MainThreadMarker::new().expect("main thread");
+                    battbar_macos::connections::watch(mtm, move |c| {
+                        println!(
+                            "[{:>6.2}s] bluetooth device {}",
+                            start.elapsed().as_secs_f64(),
+                            if c { "connected" } else { "disconnected" }
+                        )
+                    });
+                }
+                let _ = battbar_hid::enumerate(); // start the HID service thread
+                println!("listening for {seconds} s (devices present now are reported once at start)");
+                battbar_macos::classic::run_current_run_loop(*seconds as f64);
+            }
+            println!("events: hid={} bluetooth={}", battbar_hid::hotplug_events(), {
+                #[cfg(target_os = "macos")]
+                {
+                    battbar_macos::connections::events()
+                }
+                #[cfg(not(target_os = "macos"))]
+                0
+            });
         }
         Cmd::DebugBt => {
             let bt = bluetooth_available(&cli);

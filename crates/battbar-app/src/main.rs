@@ -620,11 +620,12 @@ impl App {
         self.last_update = Some(local_time());
         if std::env::var_os("BATTBAR_LOG").is_some() {
             eprintln!(
-                "[{}] input_monitoring={} bt_auth={} timed_out={:?}",
+                "[{}] input_monitoring={} bt_auth={} timed_out={:?} reason={}",
                 local_time(),
                 battbar_hid::input_monitoring_status(),
                 u.bt_authorization,
-                self.timed_out
+                self.timed_out,
+                u.reason
             );
             for d in &self.devices {
                 let spare = d
@@ -642,6 +643,7 @@ impl App {
             }
         }
         self.bt_authorization = u.bt_authorization;
+        self.watch_bluetooth();
         if self.menu_open {
             self.dirty = true;
         } else {
@@ -1203,6 +1205,20 @@ fn dump_menu(menu: &NSMenu, depth: usize) {
 }
 
 impl App {
+    /// Bluetooth connect/disconnect notifications → poll soon (once permission is
+    /// granted: IOBluetooth blocks while the prompt is open). Main thread.
+    fn watch_bluetooth(&self) {
+        if battbar_macos::connections::watching() || !battbar_macos::ble::is_authorized() {
+            return;
+        }
+        let tx = self.tx.clone();
+        battbar_macos::connections::watch(self.mtm, move |_connected| {
+            let _ = tx.send(WorkerCmd::Hotplug("bluetooth"));
+        });
+    }
+}
+
+impl App {
     // ------------------------------------------------- not enough space (overflow.rs)
     //
     // Event-driven: occlusion notifications of the item's window, screen changes and
@@ -1302,6 +1318,7 @@ impl App {
                 });
                 // One-shot (repeats: false).
                 let t = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(secs, false, &block) };
+                t.setTolerance(0.1);
                 self.overflow_timer = Some(t);
             }
         }
@@ -1518,6 +1535,7 @@ fn main() {
     };
     APP.with(|c| *c.borrow_mut() = Some(state));
     forget_old_status_items();
+    with_app(|a| a.watch_bluetooth());
     with_app(|a| a.render());
     // Screens or resolution changed: the item is placed again; restart the check.
     let screens_changed = block2::RcBlock::new(|_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
