@@ -16,6 +16,17 @@ All notable changes to this project are documented here. The format follows
   of the menu, by `battbar --version` and in `battbar dump`. A candidate offers the
   final release as an update once it is out (before, both counted as `0.5.0`).
 
+### Fixed
+
+- A Bluetooth LE keyboard that was switched off could keep showing its last value for
+  up to 5 minutes (from cached `system_profiler` output); now only devices the system
+  reports as connected are shown. battbar no longer keeps a Bluetooth LE connection of
+  its own after reading.
+- A mouse or keyboard behind a just-plugged receiver, and a headset reaching a
+  just-plugged base station, could wait for the next minute poll: the receiver is
+  asked to announce its connected devices, and the base station's headset state is
+  part of the 2 s check.
+
 ### Changed
 
 - Fewer wake-ups while idle (between polls about 1.8 instead of 9 per second on the

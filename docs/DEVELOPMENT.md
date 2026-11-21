@@ -134,9 +134,11 @@ leeway of 15 % of the period, so macOS can coalesce it with other wake-ups.
 **The 2 s device-event check** (kept, with reason): it drains HID++ notifications
 that hidapi has already buffered (device connected/disconnected on a receiver, battery
 or charging events) — hidapi offers no callback for them, so they can only be seen by
-asking. It does no device I/O and makes a device that is switched on behind a receiver
-appear within ~2 s. Making it event-driven needs a blocking reader per HID++ link
-(SPEC backlog).
+asking — and, while a SteelSeries base station is open, asks the base for its status
+(one request/reply on its vendor interface): the base sends nothing when its headset
+connects, disconnects, moves to Bluetooth or starts charging. A poll follows only if
+one of those changed. Making the HID++ part event-driven needs a blocking reader per
+link (SPEC backlog).
 
 **Idle wake-ups by thread** (reference Mac mini, 2026-11-21, Instruments *System
 Trace*, 30 s between polls, Running intervals per thread of `battbar-app`):

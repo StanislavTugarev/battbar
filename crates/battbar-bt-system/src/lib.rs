@@ -118,9 +118,15 @@ pub fn ble_report(id_hash: &str, name: &str, kind: DeviceKind, percent: Option<u
 }
 
 /// `system_profiler` fallback for connected BLE devices not covered by CoreBluetooth.
-pub fn sp_fallback_reports(sp: &[SpDevice], covered_names: &[String]) -> Vec<DeviceReport> {
+/// `live_connected`: names of Bluetooth LE devices the system says are connected right
+/// now (IOBluetooth, read fresh each poll). `system_profiler` output is cached for
+/// minutes, so with a live list its "connected" is not trusted (a keyboard switched off
+/// would keep its last value); `None` only when nothing live is available (then the
+/// caller runs `system_profiler` afresh).
+pub fn sp_fallback_reports(sp: &[SpDevice], covered_names: &[String], live_connected: Option<&[String]>) -> Vec<DeviceReport> {
     sp.iter()
         .filter(|d| d.connected && d.ble && !covered_names.iter().any(|n| n == &d.name))
+        .filter(|d| live_connected.is_none_or(|live| live.iter().any(|n| n == &d.name)))
         .map(|d| {
             let mut r = ble_report(
                 &format!("sp-{}", short_hash(&d.name)),
@@ -219,10 +225,14 @@ impl BatteryProvider for BtSystemProvider {
 
         // Classic devices (IOBluetooth). Battery values are read in a short-lived helper
         // process: in a long-running one IOBluetooth reports them only once.
-        for d in battbar_macos::classic::paired_devices_fresh()
-            .into_iter()
-            .filter(|d| d.is_classic())
-        {
+        let paired = battbar_macos::classic::paired_devices_fresh();
+        // Bluetooth LE devices connected right now, by the system's own state.
+        let le_connected: Vec<String> = paired
+            .iter()
+            .filter(|d| !d.is_classic() && d.connected)
+            .map(|d| d.name.clone())
+            .collect();
+        for d in paired.into_iter().filter(|d| d.is_classic()) {
             out.push(classic_report(&ClassicInput {
                 name: d.name.clone(),
                 address_hash: keyed_hash("bt-address", &d.address),
@@ -268,8 +278,11 @@ impl BatteryProvider for BtSystemProvider {
         }
 
         // Fallback for BLE devices CoreBluetooth did not cover (or could not be used).
+        // The system is the source of truth for "connected": with CoreBluetooth working,
+        // only devices IOBluetooth reports connected now; without it, a fresh run.
         let sp = self.system_profiler(!ble_ok);
-        out.extend(sp_fallback_reports(&sp, &covered));
+        let live = ble_ok.then_some(le_connected.as_slice());
+        out.extend(sp_fallback_reports(&sp, &covered, live));
         out
     }
 
@@ -399,10 +412,26 @@ mod tests {
             {"Other Mouse":{"device_batteryLevelMain":"40%","device_minorType":"Mouse","device_services":"< BLE >"}},
             {"Arctis":{"device_minorType":"Headphones","device_services":"< HFP A2DP >"}}]}]}"#,
         );
-        let r = sp_fallback_reports(&sp, &["G915 KEYBOARD".to_string()]);
+        let r = sp_fallback_reports(&sp, &["G915 KEYBOARD".to_string()], None);
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].name, "Other Mouse");
         assert_eq!(r[0].kind, DeviceKind::Mouse);
         assert_eq!(r[0].reading.percent, Some(40));
+    }
+
+    /// A Bluetooth LE keyboard switched off: CoreBluetooth no longer lists it, the
+    /// cached system_profiler output still says "connected, 100 %". The system's live
+    /// state decides: not shown (before: 100 % for up to 5 minutes).
+    #[test]
+    fn cached_system_profiler_does_not_keep_a_switched_off_device() {
+        let sp = system_profiler::parse(
+            r#"{"SPBluetoothDataType":[{"device_connected":[
+            {"Pebble K380s":{"device_batteryLevelMain":"100%","device_minorType":"Keyboard","device_services":"< BLE >"}},
+            {"Other Mouse":{"device_batteryLevelMain":"40%","device_minorType":"Mouse","device_services":"< BLE >"}}]}]}"#,
+        );
+        let live = ["Other Mouse".to_string()];
+        let r = sp_fallback_reports(&sp, &[], Some(&live));
+        assert_eq!(r.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["Other Mouse"]);
+        assert!(sp_fallback_reports(&sp, &[], Some(&[])).is_empty(), "nothing connected now");
     }
 }

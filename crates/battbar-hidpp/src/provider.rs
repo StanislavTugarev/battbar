@@ -360,7 +360,16 @@ impl HidppProvider {
         }
         if !link.notifications_checked {
             match receiver::ensure_notifications(&mut link.ch) {
-                Ok(_) => link.notifications_checked = true,
+                Ok(_) => {
+                    link.notifications_checked = true;
+                    // Devices that connected before notifications were on: have them
+                    // announced now (the notifications trigger the next poll).
+                    match receiver::replay_connections(&mut link.ch) {
+                        Ok(()) => {}
+                        Err(e @ HidppError::Transport(_)) => return Err(e),
+                        Err(e) => self.errors.push(format!("{link_id}: connection replay: {e}")),
+                    }
+                }
                 Err(e @ HidppError::Transport(_)) => return Err(e),
                 Err(e) => self.errors.push(format!("{link_id}: notification flags: {e}")),
             }

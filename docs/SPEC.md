@@ -410,6 +410,21 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 - **Bluetooth**: IOBluetooth connect notifications (and a disconnect notification per
   connected device), registered on the main thread once Bluetooth permission is
   granted — for classic audio devices that are not HID (headsets).
+- **Receivers**: when a receiver link is opened, battbar enables connection
+  notifications and then asks the receiver to repeat the connection notification of
+  every device on line (HID++ 1.0 register 0x02 ← 0x02, as Solaar's `notify_devices`):
+  a device that connected before notifications were on is announced too. Register
+  writes stay off in diagnostics (`dump`, `record`).
+- **Bluetooth LE**: the system decides what is connected. A device that is not in
+  `retrieveConnectedPeripherals` is not shown with a value from any source (Battery
+  Service, HID++ over GATT); the cached `system_profiler` fallback counts only devices
+  IOBluetooth reports connected at that poll. battbar never keeps a connection of its
+  own: GATT sessions are counted per peripheral and the last one to close cancels the
+  app's connection (also after a failed attempt); peripherals are only taken from the
+  system's connected list.
+- **SteelSeries base stations**: the 2 s event check asks each open base for its status
+  and polls when the headset connected/disconnected, moved to/from Bluetooth or
+  started/stopped charging.
 - The worker polls **0.3 s** after such a notification (a burst gives one poll); the
   poll log names the reason (`interval`, `hid`, `bluetooth`, `device event`,
   `follow-up`, `refresh`).

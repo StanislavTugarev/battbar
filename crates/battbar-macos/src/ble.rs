@@ -53,6 +53,11 @@ struct Router {
     state: Mutex<isize>,
     state_cv: Condvar,
     subscribers: Mutex<HashMap<String, Vec<Sender<PEvent>>>>,
+    /// Open GATT sessions per peripheral. CoreBluetooth has one app-level connection
+    /// per peripheral and app, shared by all sessions: it is cancelled when the last
+    /// session closes (never left pending or held; the system's own HID connection is
+    /// not affected).
+    sessions: Mutex<HashMap<String, usize>>,
 }
 
 impl Router {
@@ -310,6 +315,9 @@ impl GattSession {
             .entry(peripheral.id.clone())
             .or_default()
             .push(tx);
+        *central.router.sessions.lock().unwrap().entry(peripheral.id.clone()).or_default() += 1;
+        // From here on, dropping `s` (also on an error below) cancels the connection if
+        // it was the last session: a failed connection attempt is never left pending.
         let mut s = GattSession {
             central,
             peripheral: peripheral.clone(),
@@ -460,10 +468,25 @@ impl GattSession {
 
 impl Drop for GattSession {
     fn drop(&mut self) {
-        // Unsubscribe our channel; the system keeps its own HID connection, so the
-        // app-level connection is left alone.
+        // Unsubscribe our channel.
         if let Some(v) = self.central.router.subscribers.lock().unwrap().get_mut(&self.peripheral.id) {
             v.retain(|tx| tx.send(PEvent::Services(None)).is_ok());
+        }
+        // Last session of this peripheral: cancel our app-level connection (the system's
+        // HID connection stays). The system's list of connected peripherals then shows
+        // only what the system holds, so a device that is switched off disappears.
+        let last = {
+            let mut m = self.central.router.sessions.lock().unwrap();
+            let n = m.entry(self.peripheral.id.clone()).or_default();
+            *n = n.saturating_sub(1);
+            let last = *n == 0;
+            if last {
+                m.remove(&self.peripheral.id);
+            }
+            last
+        };
+        if last {
+            unsafe { self.central.manager.0.cancelPeripheralConnection(&self.peripheral.p.0) };
         }
     }
 }

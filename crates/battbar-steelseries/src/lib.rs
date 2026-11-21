@@ -100,6 +100,8 @@ struct Open {
     device: devicedb::DeviceDef,
     t: BoxTransport,
     last_raw: Option<Vec<u8>>,
+    /// Headset state at the last poll or check (see `nova_pro::StatusKey`).
+    last_key: Option<nova_pro::StatusKey>,
 }
 
 pub struct SteelSeriesProvider {
@@ -169,6 +171,7 @@ impl SteelSeriesProvider {
                             device: c.device,
                             t,
                             last_raw: None,
+                            last_key: None,
                         },
                     );
                 }
@@ -208,6 +211,7 @@ impl BatteryProvider for SteelSeriesProvider {
                 Ok(Some(r)) => {
                     let s = nova_pro::decode(&r);
                     o.last_raw = Some(r);
+                    o.last_key = Some(nova_pro::status_key(&s));
                     let hints = if s.headset_on_bluetooth && !o.device.bt_name_patterns.is_empty() {
                         vec![MergeHint::BluetoothCompanion {
                             name_patterns: o.device.bt_name_patterns.clone(),
@@ -253,6 +257,20 @@ impl BatteryProvider for SteelSeriesProvider {
     }
 
     fn check_events(&mut self) -> bool {
+        // The headset's state on each open base (no notification exists for it): poll
+        // when it connected/disconnected, moved to/from Bluetooth or started/stopped
+        // charging — e.g. a headset that reaches a just-plugged base 10–20 s later.
+        let mut changed = false;
+        for o in self.links.values_mut() {
+            if let Ok(Some(r)) = Self::query(o) {
+                let key = nova_pro::status_key(&nova_pro::decode(&r));
+                changed |= o.last_key.is_some_and(|k| k != key);
+                o.last_key = Some(key);
+            }
+        }
+        if changed {
+            return true;
+        }
         // Hotplug notifications trigger polls; a re-scan only as a rare safety net.
         if !self.rescan.due(std::time::Instant::now()) {
             return false;
