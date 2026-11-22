@@ -547,3 +547,59 @@ Idle wake-ups (Instruments System Trace, 30 s between polls): 9.2/s in 0.4.0, 1.
 in d9fcbbc; per thread in DEVELOPMENT.md "Timers and wake-ups". The ping of
 disconnected slots rides on the existing 2 s check (no extra wake-up); not measured
 again.
+
+## Background load (0.5, 2026-11-22)
+
+Reference Mac mini (M4), macOS 26.1. Release-optimized build (`BATTBAR_LOCAL_RELEASE=1
+scripts/bundle.sh`, development bundle ID), worst case: base station plugged in, G915
+switched off (its slot is pinged in every 2 s check).
+
+### Cost of one 2 s check (`battbar debug-check-cost`, 30 checks each)
+
+| State | CPU per check | Context switches per check | Wall time |
+|---|---|---|---|
+| HID++, every device on line | 17 µs | 0.1 | 0.01 ms |
+| HID++, G915 off (ping of its slot) | 133 µs | 3.4 | 1.2 ms (the receiver answers itself) |
+| Base station, status request (before rc: in every check) | 151 µs | 3.4 | 28 ms |
+| Base station now (events read by a blocking listener; the check asks nothing) | 6 µs | 0 | 0 |
+
+The ping of a disconnected slot costs ~1.7 context switches/s while the slot stays
+disconnected; kept as is (decided 2026-11-22): narrowing it to the first seconds after a
+plug-in would add state for an invisible gain. Further wake-up optimisation is stopped
+at these numbers.
+
+### 6-hour run (`scripts/soak.py`, sample every 5 min, 03:17–09:15)
+
+| | Start | 1 h | 2 h | 3 h | 6 h |
+|---|---|---|---|---|---|
+| RSS | 46.9 MB | 47.5 MB | 47.5 MB | 52.0 MB¹ | 50.9 MB |
+| CPU time (accumulated) | 0.3 s | 2.3 s | 4.7 s | 5.9 s | 11.6 s |
+| Threads / open files | 16 / 29 | 16 / 29 | 16 / 29 | 16 / 30¹ | 16 / 30 |
+
+- **CPU: ~1.9 s per hour** (first hour 2.3 s with the start-up).
+- **Context switches: ~8.3/s** averaged over the run including the minute polls (the
+  ping accounts for ~1.7/s of it; 6.6/s without it, measured for d9fcbbc).
+- **Power assertions held by battbar: none** (all 72 samples). The Mac went to idle
+  sleep twice during the run (05:19, 06:01) with the ping and the base listener active.
+- **Settings file written once**, at start; no write in 6 hours. Since 0.5 a save with
+  unchanged content writes nothing (test `polls_without_changes_write_nothing`). No log
+  file, cache or temporary file in release builds (the poll log exists only with
+  `BATTBAR_LOG`).
+- **After waking**: 05:30:55 dark wake → two polls (`hid` +2 s, `device event` +6 s),
+  then the minute rhythm; 06:18:15 dark wake → one poll (+30 s). No burst. The full
+  wake at 05:30:58 ("due to HID Activity") followed a `bluetoothd` "Bluetooth LE HID
+  Activity" assertion at 05:30:56 (the Pebble reconnecting), before battbar's first
+  poll; the dark wake at 06:18, with a battbar poll at 06:18:45, did not become a full
+  wake.
+
+¹ One step at the first wake (05:30, the Pebble reappeared as a HID device): +4.4 MB
+RSS, +1 open file; flat afterwards, and slightly down over the last 3 hours.
+
+### Memory: polls do not leak
+
+Accelerated run (poll every 10 s instead of 60 s, 35 min, 208 polls), heap summary
+every 5 minutes: 30 233 malloc nodes (±6), 18.63 MB, 39 blocks of 352 KB, footprint
+15.0–15.2 MB, 31 open files — unchanged from minute 5 to minute 35. The 6-hour
+process, compared with a fresh one, had ~3 000 more nodes, 27 more 352 KB blocks and
++2.7 MB footprint: these came with events (wake, devices reconnecting, the menu being
+opened), not with polls; see the reconnect test below.
