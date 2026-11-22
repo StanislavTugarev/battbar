@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format follows
 - Release candidates know their full version (e.g. `0.5.0-rc.1`): shown at the bottom
   of the menu, by `battbar --version` and in `battbar dump`. A candidate offers the
   final release as an update once it is out (before, both counted as `0.5.0`).
+- Issue templates ask for the device, how it is connected, the Mac and macOS version
+  and the diagnostics files, with a short guide in
+  [ADDING_A_DEVICE.md](docs/ADDING_A_DEVICE.md#how-to-collect-diagnostics); a new
+  "Works with my device" template. SUPPORTED_DEVICES shows where a device was verified
+  or that users reported it.
 
 ### Fixed
 

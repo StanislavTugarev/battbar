@@ -2,36 +2,56 @@ name: Wrong battery value
 description: battbar shows a battery level that differs from the device or vendor app.
 labels: ["battery value"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Takes about 5 minutes. Diagnostics: [How to collect diagnostics](../blob/main/docs/ADDING_A_DEVICE.md#how-to-collect-diagnostics) — in short:
+        `battbar --version`, `battbar dump > ~/Desktop/dump.txt`, and for about 2 minutes
+        `battbar record --out ~/Desktop/trace.jsonl --polls 24 --interval 5 --note "vendor app shows …"` while you switch the device off and on and plug the charger in and out.
   - type: input
     id: device
     attributes:
-      label: Device and connection
-      placeholder: "Logitech G915 on Bluetooth"
-    validations:
-      required: true
-  - type: input
-    id: battbar
-    attributes:
-      label: What battbar shows
-      placeholder: "~62 %"
-    validations:
-      required: true
-  - type: input
-    id: reference
-    attributes:
-      label: What the vendor app or device shows
-      placeholder: "G HUB: 80 %"
+      label: Device model
+      placeholder: "Logitech G915"
     validations:
       required: true
   - type: dropdown
-    id: charging
+    id: connection
     attributes:
-      label: Was the device charging or on a cable?
-      options: ["No", "Yes", "Not sure"]
+      label: Connected via
+      options:
+        - Receiver (Logitech Lightspeed / Unifying / Bolt)
+        - Base station / dongle
+        - Bluetooth
+        - USB cable
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac model and macOS version
+      placeholder: "Mac mini M4, macOS 26.1"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: battbar version
+      placeholder: "battbar 0.5.0"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected and what you see
+      description: The value from the vendor app or the device, the value in battbar, and whether it was charging.
+      placeholder: "G HUB: 80 %, not charging. battbar: ~62 %."
+    validations:
+      required: true
   - type: textarea
     id: files
     attributes:
-      label: Dump and trace
-      description: Attach `battbar dump --out battbar-dump.json` and `battbar record --out battbar-trace.jsonl --note "vendor app shows …"`.
+      label: dump.txt and trace.jsonl
+      description: Drag both files here.
     validations:
       required: true

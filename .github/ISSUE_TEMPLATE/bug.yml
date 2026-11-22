@@ -22,5 +22,5 @@ body:
   - type: textarea
     id: dump
     attributes:
-      label: Diagnostic dump (optional)
-      description: Attach `battbar dump --out battbar-dump.json` if devices are involved.
+      label: dump.txt (optional)
+      description: "If devices are involved: `battbar dump > ~/Desktop/dump.txt`, then drag the file here ([what it contains](../blob/main/docs/ADDING_A_DEVICE.md#how-to-collect-diagnostics))."

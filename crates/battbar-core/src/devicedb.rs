@@ -59,6 +59,10 @@ pub struct ReceiverDef {
     pub family: ReceiverFamily,
     #[serde(default = "default_max_devices")]
     pub max_devices: u8,
+    /// Where battbar's behaviour with this receiver was checked on real hardware
+    /// (shown in SUPPORTED_DEVICES).
+    #[serde(default)]
+    pub verified_on: Option<String>,
 }
 
 fn default_max_devices() -> u8 {
@@ -111,6 +115,19 @@ pub struct DeviceDef {
     /// voltage calibration.
     #[serde(default)]
     pub ble_battery_service_unreliable: bool,
+    /// Base stations: the format of the headset events the base sends by itself
+    /// (report 0x07 0xb5/0xb7) is confirmed for this model, so battbar listens for
+    /// them. Without it the headset is read by the regular poll only.
+    #[serde(default)]
+    pub base_events: bool,
+    /// Where battbar's behaviour with this device was checked on real hardware (shown
+    /// in SUPPORTED_DEVICES as "verified on: …").
+    #[serde(default)]
+    pub verified_on: Option<String>,
+    /// Users reported that it works (a "Works with my device" issue); not checked by
+    /// the maintainers.
+    #[serde(default)]
+    pub reported_by_users: bool,
     #[serde(default)]
     pub notes: Option<String>,
 }

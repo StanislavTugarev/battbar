@@ -16,30 +16,48 @@ describe compatibility.
 
 Something missing or wrong? See [ADDING_A_DEVICE.md](ADDING_A_DEVICE.md).
 
+## How changes are noticed
+
+Every device is read by the regular poll (every minute by default); that alone shows any
+supported device. Faster paths come on top and are only an acceleration:
+
+- USB devices, receivers and base stations appearing or disappearing: macOS hotplug
+  notifications (all devices). Without them, a re-scan every 5 minutes finds them.
+- Devices behind a receiver: connection notifications (0x41), the device's own messages and,
+  for devices that were disconnected, a ping every 2 s. A receiver that answers differently
+  is still read by the poll.
+- Headset changes on a base station: events sent by the base, only for models marked
+  below as reporting them; other bases are read by the poll.
+- Bluetooth: macOS connection notifications and HID hotplug.
+
+"Verified on" says where a device's behaviour (including these paths) was checked on real
+hardware; "reported by users" means users reported that it works.
+
 ## Receivers
 
-| Receiver | Family | VID:PID |
-|---|---|---|
-| Unifying receiver | Unifying | `046D:C52B` |
-| Unifying receiver | Unifying | `046D:C532` |
-| Lightspeed receiver | Lightspeed | `046D:C539` |
-| Lightspeed receiver | Lightspeed | `046D:C53A` |
-| Lightspeed receiver | Lightspeed | `046D:C53F` |
-| Lightspeed receiver | Lightspeed | `046D:C541` |
-| Lightspeed receiver | Lightspeed | `046D:C545` |
-| Lightspeed receiver | Lightspeed | `046D:C547` |
-| Bolt receiver | Bolt (untested) | `046D:C548` |
+| Receiver | Family | VID:PID | Status |
+|---|---|---|---|
+| Unifying receiver | Unifying | `046D:C52B` |  |
+| Unifying receiver | Unifying | `046D:C532` |  |
+| Lightspeed receiver | Lightspeed | `046D:C539` |  |
+| Lightspeed receiver | Lightspeed | `046D:C53A` |  |
+| Lightspeed receiver | Lightspeed | `046D:C53F` |  |
+| Lightspeed receiver | Lightspeed | `046D:C541` |  |
+| Lightspeed receiver | Lightspeed | `046D:C545` |  |
+| Lightspeed receiver | Lightspeed | `046D:C547` | verified on: reference Mac mini (M4), macOS 26.1, battbar 0.5: plug/unplug, connection notifications (0x41 on disconnect, not always on connect), ping of absent devices |
+| Bolt receiver | Bolt (untested) | `046D:C548` |  |
 
 ## Logitech HID++ devices
 
-| Device | Type | Connections | Notes |
-|---|---|---|---|
-| G502 X PLUS | Mouse | Receiver (wpid `4099`)<br>USB cable (`C095`) | Battery via 0x1004 (Unified Battery), exact percentage. Verified on Lightspeed. |
-| G915 Wireless Mechanical Gaming Keyboard | Keyboard | Receiver (wpid `407C`)<br>USB cable (`C33E`)<br>Bluetooth LE (`B354`) | Battery via 0x1001 (voltage) only; no serial number. Verified on Lightspeed and BLE (GATT). The BLE Battery Service value is not used (stays at 100 %). |
-| Pebble Keys 2 K380s | Keyboard | Bluetooth LE (`B377`) | 2× AAA. Battery via 0x1004 (percentage from the firmware). Verified on Bluetooth LE. |
+| Device | Type | Connections | Notes | Status |
+|---|---|---|---|---|
+| G502 X PLUS | Mouse | Receiver (wpid `4099`)<br>USB cable (`C095`) | Battery via 0x1004 (Unified Battery), exact percentage. | verified on: reference Mac mini (M4), macOS 26.1, battbar 0.5: Lightspeed (on/off, wake-up, behind a just-plugged receiver) |
+| G915 Wireless Mechanical Gaming Keyboard | Keyboard | Receiver (wpid `407C`)<br>USB cable (`C33E`)<br>Bluetooth LE (`B354`) | Battery via 0x1001 (voltage) only; no serial number. The BLE Battery Service value is not used (stays at 100 %). | verified on: reference Mac mini (M4), macOS 26.1, battbar 0.5: Lightspeed (on/off, wake-up) and Bluetooth LE |
+| Pebble Keys 2 K380s | Keyboard | Bluetooth LE (`B377`) | 2× AAA. Battery via 0x1004 (percentage from the firmware). | verified on: reference Mac mini (M4), macOS 26.1, battbar 0.5: Bluetooth LE (on/off) |
 
 ## SteelSeries headsets (native)
 
-| Device | Type | Connections | Notes |
-|---|---|---|---|
-| Arctis Nova Pro Wireless | Headset | Base station (USB) (`12E0`, `12E5`)<br>Bluetooth (macOS battery) | Base station status report 06 b0. 0x12E5 is the Xbox variant (untested). |
+| Device | Type | Connections | Notes | Status |
+|---|---|---|---|---|
+| Arctis Nova Pro Wireless | Headset | Base station (USB) (`12E0`)<br>Bluetooth (macOS battery) | Base station status report 06 b0. Base reports headset changes itself (base events). | verified on: reference Mac mini (M4), macOS 26.1, battbar 0.5: status report, headset events from the base, base hotplug |
+| Arctis Nova Pro Wireless (Xbox) | Headset | Base station (USB) (`12E5`)<br>Bluetooth (macOS battery) | Xbox variant, untested: same status report assumed; headset changes are seen at the next poll (base events not confirmed). |  |

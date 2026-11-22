@@ -2,32 +2,32 @@
 
 ## Part 1 — for users: collect data (no programming)
 
-You need battbar installed (see the README) and about five minutes.
+You need battbar installed (see the README) and about five minutes. Connect the device
+the way it does not work (receiver, base station, cable or Bluetooth), make sure it is
+awake, and note the battery level your vendor app or the device shows (e.g. "G HUB:
+57 %", "charging"). Then collect diagnostics as below and open an issue with the
+**"Device not detected / new device"** or **"Wrong battery value"** template.
 
-1. **Connect the device the way it does not work** (receiver, base station, cable or
-   Bluetooth). Make sure it is awake: move the mouse, press a key, put the headset on.
-2. **Write down the battery level your vendor app or the device shows** (for example
-   "G HUB: 57 %", "base display: 3 of 4 bars", "charging"). This is the reference we
-   compare against.
-3. Open **Terminal** and run:
+## How to collect diagnostics
 
-   ```
-   battbar dump --out ~/Desktop/battbar-dump.json
-   battbar record --out ~/Desktop/battbar-trace.jsonl --polls 3 --note "G HUB shows 57 %"
-   ```
+Run in **Terminal** (if macOS asks for Bluetooth access, allow it):
 
-   Put your reference value into `--note`. If macOS asks for Bluetooth access, allow it
-   (or add `--no-bluetooth` if the device is not on Bluetooth).
-4. Open an issue with the **"Device not detected / new device"** template (or
-   **"Wrong battery value"**) and attach both files.
+1. Version: `battbar --version`
+2. Report: `battbar dump > ~/Desktop/dump.txt`
+3. Trace, about 2 minutes:
+   `battbar record --out ~/Desktop/trace.jsonl --polls 24 --interval 5 --note "G HUB shows 57 %"`
+   While it runs: switch the device off and on, plug the charger in and out, and for a
+   receiver or base station unplug it and plug it back in. Put the reference value
+   into `--note`.
+4. Attach `dump.txt` and `trace.jsonl` to the issue (drag them into the text field).
 
-**What the files contain.** `battbar-dump.json`: macOS version, which HID interfaces
-exist (vendor/product IDs, usage pages), which protocol features the device reports,
-device names, battery readings. `battbar-trace.jsonl`: the bytes exchanged with the
-device's *vendor-specific* interface only. Neither contains keystrokes, serial numbers
-or Bluetooth addresses; device unit IDs are replaced with pseudonyms, and paired-device
-names that look personal ("Anna's AirPods") are redacted. Have a look before uploading —
-both are plain text.
+**Privacy.** The files contain vendor and product IDs of HID interfaces, the protocol
+frames exchanged with the device's *vendor-specific* interfaces, device names and
+battery readings; serial numbers and unit IDs are replaced with pseudonyms. They contain
+no keystrokes or mouse input, no Bluetooth addresses and no user name (your home folder
+appears as `~`); paired-device names that look personal ("Anna's AirPods") are redacted.
+Both are plain text — have a look before uploading. See also
+[Privacy](../README.md#privacy) in the README.
 
 **Battery curves.** For devices that only report a voltage, a few recordings at
 different levels **on battery (cable unplugged)** help us build an accurate curve:
@@ -74,6 +74,9 @@ voltage_curve = "example-keyboard"   # only for 0x1001 (voltage) devices
 # 100 % while the vendor app shows less): it is then never preferred or learned from.
 # ble_battery_service_unreliable = true
 notes = "Battery via 0x1001."
+# Who checked it: `verified_on` (maintainers, on real hardware) or
+# `reported_by_users = true` (from a "Works with my device" issue).
+reported_by_users = true
 
 [[curve]]
 id = "example-keyboard"
@@ -89,6 +92,9 @@ vendor_id = 0x1038
 usb_pid = [0x12FF]
 vendor_usage_page = 0xFFC0
 bt_name_patterns = ["Example Headset*"]   # its name on Bluetooth, for merging
+# Only once a recording shows that this base sends headset events by itself
+# (07 b5 / 07 b7, `battbar debug-base-listen`); otherwise the poll reads the headset.
+# base_events = true
 ```
 
 ### Add a trace test

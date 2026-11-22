@@ -13,7 +13,8 @@ usb_pid = [0xC33E]
 # Its BLE Battery Service kept reporting 100 % from 4148 mV down to 4054 mV, while
 # G HUB showed 91 % (2026-11-20); macOS's own Bluetooth battery shows the same 100 %.
 ble_battery_service_unreliable = true
-notes = "Battery via 0x1001 (voltage) only; no serial number. Verified on Lightspeed and BLE (GATT). The BLE Battery Service value is not used (stays at 100 %)."
+verified_on = "reference Mac mini (M4), macOS 26.1, battbar 0.5: Lightspeed (on/off, wake-up) and Bluetooth LE"
+notes = "Battery via 0x1001 (voltage) only; no serial number. The BLE Battery Service value is not used (stays at 100 %)."
 
 [[device]]
 name = "G502 X PLUS"
@@ -22,7 +23,8 @@ protocol = "hidpp20"
 vendor_id = 0x046D
 wpid = [0x4099]
 usb_pid = [0xC095]
-notes = "Battery via 0x1004 (Unified Battery), exact percentage. Verified on Lightspeed."
+verified_on = "reference Mac mini (M4), macOS 26.1, battbar 0.5: Lightspeed (on/off, wake-up, behind a just-plugged receiver)"
+notes = "Battery via 0x1004 (Unified Battery), exact percentage."
 
 [[device]]
 name = "Pebble Keys 2 K380s"
@@ -30,4 +32,5 @@ kind = "keyboard"
 protocol = "hidpp20"
 vendor_id = 0x046D
 ble_pid = [0xB377]
-notes = "2× AAA. Battery via 0x1004 (percentage from the firmware). Verified on Bluetooth LE."
+verified_on = "reference Mac mini (M4), macOS 26.1, battbar 0.5: Bluetooth LE (on/off)"
+notes = "2× AAA. Battery via 0x1004 (percentage from the firmware)."

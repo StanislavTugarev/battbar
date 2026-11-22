@@ -32,6 +32,8 @@ struct Control {
     answering: BTreeSet<u8>,
     /// Slots whose pings get no answer at all (a device asleep).
     silent: BTreeSet<u8>,
+    /// Slots whose pings get this frame instead (a receiver that answers differently).
+    odd: std::collections::BTreeMap<u8, Vec<u8>>,
     pings: Vec<u8>,
 }
 
@@ -59,6 +61,10 @@ impl FrameTransport for FakeReceiver {
             let mut ctl = self.ctl.lock().unwrap();
             ctl.pings.push(frame[1]);
             if ctl.silent.contains(&frame[1]) {
+                return Ok(());
+            }
+            if let Some(f) = ctl.odd.get(&frame[1]) {
+                self.replies.push_back(f.clone());
                 return Ok(());
             }
             if ctl.off_line.contains(&frame[1]) {
@@ -246,4 +252,72 @@ fn an_asleep_slot_is_not_pinged() {
     // Waking up, it speaks: one poll.
     ctl.lock().unwrap().incoming.push_back(feature_frame(MOUSE));
     assert!(p.check_events_at(Instant::now() + Duration::from_secs(12)));
+}
+
+/// Take the mouse off line and poll, so its slot is "disconnected".
+fn mouse_gone(p: &mut HidppProvider, ctl: &Arc<Mutex<Control>>) {
+    ctl.lock().unwrap().off_line.insert(MOUSE);
+    let r = p.poll();
+    assert_eq!(status(&r, DeviceKind::Mouse), Status::Disconnected);
+    ctl.lock().unwrap().off_line.clear();
+}
+
+/// A receiver that answers the ping of an absent device differently from the reference
+/// Lightspeed (another HID++ 1.0 error, a reply of another format, no answer): no
+/// poll storm, nothing breaks, and the device is found by the regular poll.
+#[test]
+fn other_ping_answers_break_nothing_and_the_poll_still_finds_the_device() {
+    let (mut p, ctl) = setup();
+    let _ = p.poll();
+    mouse_gone(&mut p, &ctl);
+    let t0 = Instant::now();
+    // HID++ 1.0 errors other than "unknown device": ignored, as "absent".
+    for err in [
+        0x09, /* resource error */
+        0x01, /* invalid sub-ID */
+        0x02, /* invalid address */
+    ] {
+        ctl.lock()
+            .unwrap()
+            .odd
+            .insert(MOUSE, vec![0x10, MOUSE, 0x8F, 0x00, 0x1B, err, 0x00]);
+        assert_eq!(checks_asking(&mut p, t0), 0, "error 0x{err:02x}");
+    }
+    // A reply in another format (here: another software ID): not ours, so no answer in
+    // time; that counts as "maybe there": one poll, then the slot is not pinged again
+    // until a poll sees the device on line.
+    let mut foreign = vec![0x11, MOUSE, 0x00, 0x2B, 0x04, 0x02, 0xAA];
+    foreign.resize(20, 0);
+    ctl.lock().unwrap().odd.insert(MOUSE, foreign);
+    assert_eq!(checks_asking(&mut p, t0 + Duration::from_secs(20)), 1);
+    let pings = ctl.lock().unwrap().pings_of(MOUSE);
+    assert_eq!(checks_asking(&mut p, t0 + Duration::from_secs(40)), 0);
+    assert_eq!(ctl.lock().unwrap().pings_of(MOUSE), pings, "no ping loop");
+    // The device comes back: the regular poll shows it whatever the check did.
+    ctl.lock().unwrap().odd.clear();
+    let r = p.poll();
+    assert_eq!(status(&r, DeviceKind::Mouse), Status::Ok);
+    assert_eq!(checks_asking(&mut p, t0 + Duration::from_secs(60)), 0);
+}
+
+/// A receiver that does announce a connection with 0x41 ("link established", flag 0x40
+/// clear): one poll, not one for the 0x41 and another for the ping or the device's
+/// first frames.
+#[test]
+fn a_connection_announced_with_0x41_gives_one_poll() {
+    let (mut p, ctl) = setup();
+    let _ = p.poll();
+    mouse_gone(&mut p, &ctl);
+    let t0 = Instant::now();
+    ctl.lock()
+        .unwrap()
+        .incoming
+        .extend([vec![0x10, MOUSE, 0x41, 0x11, 0x32, 0x99, 0x40], feature_frame(MOUSE)]);
+    assert!(p.check_events_at(t0 + Duration::from_secs(2)), "0x41 asks for a poll");
+    // The worker polls right away; the device is on line.
+    let r = p.poll();
+    assert_eq!(status(&r, DeviceKind::Mouse), Status::Ok);
+    // Its further frames, and checks, ask for nothing more.
+    ctl.lock().unwrap().incoming.extend([feature_frame(MOUSE), feature_frame(MOUSE)]);
+    assert_eq!(checks_asking(&mut p, t0 + Duration::from_secs(2)), 0);
 }

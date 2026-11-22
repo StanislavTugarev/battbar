@@ -228,7 +228,9 @@ impl SteelSeriesProvider {
             }
             match (c.open)() {
                 Ok(t) => {
-                    if let Some(listen) = c.listen.filter(|_| events::enabled()) {
+                    // Only for models whose event format is confirmed (`base_events`);
+                    // others are read by the regular poll.
+                    if let Some(listen) = c.listen.filter(|_| events::enabled() && c.device.base_events) {
                         if let Err(e) = events::listen(c.id.clone(), listen) {
                             self.errors.push(format!("{}: event listener: {e}", c.id));
                         }
@@ -250,6 +252,26 @@ impl SteelSeriesProvider {
             }
         }
         self.links.retain(|id, _| present.contains(id));
+    }
+
+    /// Set the safety re-scan interval (tests).
+    pub fn set_rescan_interval(&mut self, every: Duration) {
+        self.rescan.every = every;
+    }
+
+    /// The event check at `now`: only the safety re-scan of base stations. Headset
+    /// changes arrive as events from the base itself (see [`events`]) or at the next
+    /// poll; hotplug notifications trigger polls for new bases.
+    pub fn check_events_at(&mut self, now: Instant) -> bool {
+        if !self.rescan.due(now) {
+            return false;
+        }
+        let mut ids: Vec<String> = vec![];
+        for s in &mut self.sources {
+            ids.extend(s.scan(&self.db).into_iter().map(|c| c.id));
+        }
+        ids.sort();
+        ids != self.links.keys().cloned().collect::<Vec<_>>()
     }
 
     fn query(o: &mut Open) -> Result<Option<Vec<u8>>, TransportError> {
@@ -327,18 +349,7 @@ impl BatteryProvider for SteelSeriesProvider {
     }
 
     fn check_events(&mut self) -> bool {
-        // Headset changes arrive as events from the base itself (see `events`), not
-        // through this check.
-        // Hotplug notifications trigger polls; a re-scan only as a rare safety net.
-        if !self.rescan.due(std::time::Instant::now()) {
-            return false;
-        }
-        let mut ids: Vec<String> = vec![];
-        for s in &mut self.sources {
-            ids.extend(s.scan(&self.db).into_iter().map(|c| c.id));
-        }
-        ids.sort();
-        ids != self.links.keys().cloned().collect::<Vec<_>>()
+        self.check_events_at(Instant::now())
     }
 
     fn diagnostics(&mut self) -> serde_json::Value {

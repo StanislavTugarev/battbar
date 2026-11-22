@@ -6,7 +6,21 @@ name = "Arctis Nova Pro Wireless"
 kind = "headset"
 protocol = "steelseries-nova-pro"
 vendor_id = 0x1038
-usb_pid = [0x12E0, 0x12E5]
+usb_pid = [0x12E0]
 vendor_usage_page = 0xFFC0
 bt_name_patterns = ["Arctis Nova Pro*"]
-notes = "Base station status report 06 b0. 0x12E5 is the Xbox variant (untested)."
+# Headset events 07 b5 / 07 b7 sent by the base itself: confirmed on this base
+# (DISCOVERY "Base station events").
+base_events = true
+verified_on = "reference Mac mini (M4), macOS 26.1, battbar 0.5: status report, headset events from the base, base hotplug"
+notes = "Base station status report 06 b0."
+
+[[device]]
+name = "Arctis Nova Pro Wireless (Xbox)"
+kind = "headset"
+protocol = "steelseries-nova-pro"
+vendor_id = 0x1038
+usb_pid = [0x12E5]
+vendor_usage_page = 0xFFC0
+bt_name_patterns = ["Arctis Nova Pro*"]
+notes = "Xbox variant, untested: same status report assumed; headset changes are seen at the next poll (base events not confirmed)."

@@ -48,6 +48,7 @@ vendor_id = 0x046D
 product_id = 0xC547
 name = "Lightspeed receiver"
 family = "lightspeed"
+verified_on = "reference Mac mini (M4), macOS 26.1, battbar 0.5: plug/unplug, connection notifications (0x41 on disconnect, not always on connect), ping of absent devices"
 
 [[receiver]]
 vendor_id = 0x046D

@@ -5,40 +5,52 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks! Please follow [docs/ADDING_A_DEVICE.md](../blob/main/docs/ADDING_A_DEVICE.md) — it takes about five minutes.
+        Takes about 5 minutes. Diagnostics: [How to collect diagnostics](../blob/main/docs/ADDING_A_DEVICE.md#how-to-collect-diagnostics) — in short:
+        `battbar --version`, `battbar dump > ~/Desktop/dump.txt`, and for about 2 minutes
+        `battbar record --out ~/Desktop/trace.jsonl --polls 24 --interval 5` while you switch the device off and on, plug the charger in and out, and replug the receiver or base station.
   - type: input
     id: device
     attributes:
-      label: Device
-      description: Vendor and model, e.g. "Logitech MX Keys S".
+      label: Device model
+      placeholder: "Logitech MX Keys S"
     validations:
       required: true
   - type: dropdown
     id: connection
     attributes:
-      label: Connection
+      label: Connected via
       options:
         - Receiver (Logitech Lightspeed / Unifying / Bolt)
         - Base station / dongle
-        - USB cable
         - Bluetooth
-        - Other
+        - USB cable
     validations:
       required: true
   - type: input
-    id: reference
+    id: mac
     attributes:
-      label: Battery level shown by the vendor app or the device
-      placeholder: "G HUB: 57 %, not charging"
+      label: Mac model and macOS version
+      placeholder: "MacBook Air M2, macOS 26.1"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: battbar version
+      placeholder: "battbar 0.5.0"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected and what you see
+      placeholder: "G HUB shows 57 %; battbar does not list the keyboard."
+    validations:
+      required: true
   - type: textarea
     id: files
     attributes:
-      label: Dump and trace
-      description: Attach `battbar dump --out battbar-dump.json` and `battbar record --out battbar-trace.jsonl --note "…"` (drag the files here).
+      label: dump.txt and trace.jsonl
+      description: Drag both files here.
     validations:
       required: true
-  - type: input
-    id: versions
-    attributes:
-      label: battbar and macOS versions
-      placeholder: "battbar 0.1.0, macOS 26.1"
