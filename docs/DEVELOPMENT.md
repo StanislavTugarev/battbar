@@ -60,6 +60,22 @@ plug/switch scenarios and times them from the log; `--env` passes these variable
 `--only` picks scenarios:
 `scripts/measure-hotplug.py --app target/battbar.app --only receiver --env BATTBAR_DEV_NO_HOTPLUG=1 --env BATTBAR_DEV_RESCAN_SECS=20 --env BATTBAR_DEV_LOG_HIDPP=1`
 
+**Background load** (0.5): `BATTBAR_LOCAL_RELEASE=1 scripts/bundle.sh` builds an
+optimized app with the development bundle ID; `scripts/soak.py --app target/battbar.app
+--hours 6 --out soak.tsv` samples memory, CPU time, context switches, threads, open
+files, polls, power assertions and the settings file's mtime. Hidden CLI tools (read
+only): `battbar debug-check-cost` (cost of each provider's 2 s check),
+`battbar debug-base-listen` (print what a base station sends by itself),
+`battbar debug-open-close` (open/close the vendor interfaces N times, then wait, to
+inspect the process with `heap`). Results: DISCOVERY "Background load".
+
+**Autorelease pools.** Every long-lived thread that may call Objective-C — directly or
+inside a system library (IOHIDLib, CoreBluetooth, IOBluetooth) — runs each unit of work
+in `battbar_core::objc_pool::with_pool`: provider requests, the worker's CoreBluetooth
+call, each round of the HID service thread, the base listener. GCD queues and the main
+run loop drain their own pools. Without one, autoreleased objects live as long as the
+thread (DISCOVERY "Memory: reconnecting devices").
+
 **Trying the update check** (development builds only): `BATTBAR_DEV_FAKE_VERSION`
 makes the app compare the latest release with that version instead of its own, so
 *Update available* appears against the real GitHub release. Turn on Settings → Check

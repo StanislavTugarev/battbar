@@ -59,17 +59,20 @@ pub mod events {
             return Ok(());
         }
         let started = std::thread::Builder::new().name("battbar-base-events".into()).spawn(move || {
-            if let Ok(mut t) = open() {
-                // Ends on an error: the base was unplugged.
-                while let Ok(r) = t.read(FOREVER) {
-                    if r.as_deref().is_some_and(crate::nova_pro::is_headset_event) {
-                        log(r.as_deref().unwrap_or_default());
-                        if let Some(f) = CALLBACK.lock().unwrap().as_ref() {
-                            f();
+            // Closing the handle (IOHIDLib) autoreleases objects: in a pool.
+            battbar_core::objc_pool::with_pool(|| {
+                if let Ok(mut t) = open() {
+                    // Ends on an error: the base was unplugged.
+                    while let Ok(r) = t.read(FOREVER) {
+                        if r.as_deref().is_some_and(crate::nova_pro::is_headset_event) {
+                            log(r.as_deref().unwrap_or_default());
+                            if let Some(f) = CALLBACK.lock().unwrap().as_ref() {
+                                f();
+                            }
                         }
                     }
                 }
-            }
+            });
             LISTENING.lock().unwrap().remove(&id);
         });
         started.map(|_| ()).map_err(|e| e.to_string())

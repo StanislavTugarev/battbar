@@ -240,21 +240,31 @@ fn service() -> &'static Service {
                 hotplug::install();
                 let _ = ready_tx.send(waker);
                 let mut api = new_api();
+                // IOHIDLib (hidapi's open/enumerate, the hotplug callbacks) is partly
+                // Objective-C and autoreleases objects: every round of jobs and run-loop
+                // events runs in its own autorelease pool, or those objects would
+                // accumulate for the life of the thread (seen: +2 NSData per open).
                 loop {
-                    // Every job sent so far, then sleep until the next event or job.
-                    loop {
-                        match rx.try_recv() {
-                            Ok(job) => job(&mut api),
-                            Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                            Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                    let stop = battbar_core::objc_pool::with_pool(|| {
+                        // Every job sent so far, then sleep until the next event or job.
+                        loop {
+                            match rx.try_recv() {
+                                Ok(job) => job(&mut api),
+                                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                                Err(std::sync::mpsc::TryRecvError::Disconnected) => return true,
+                            }
                         }
-                    }
-                    #[cfg(target_os = "macos")]
-                    cf::wait();
-                    #[cfg(not(target_os = "macos"))]
-                    match rx.recv() {
-                        Ok(job) => job(&mut api),
-                        Err(_) => return,
+                        #[cfg(target_os = "macos")]
+                        cf::wait();
+                        #[cfg(not(target_os = "macos"))]
+                        match rx.recv() {
+                            Ok(job) => job(&mut api),
+                            Err(_) => return true,
+                        }
+                        false
+                    });
+                    if stop {
+                        return;
                     }
                     RUN_LOOP_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }

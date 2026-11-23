@@ -603,3 +603,31 @@ every 5 minutes: 30 233 malloc nodes (±6), 18.63 MB, 39 blocks of 352 KB, footp
 process, compared with a fresh one, had ~3 000 more nodes, 27 more 352 KB blocks and
 +2.7 MB footprint: these came with events (wake, devices reconnecting, the menu being
 opened), not with polls; see the reconnect test below.
+
+### Memory: reconnecting devices (leak found and fixed)
+
+Heap summary every 30 s while the menu was opened 5×, the Pebble switched off and on
+20×, the receiver re-plugged 3×, in quiet phases between:
+
+| Phase (quiet afterwards) | malloc nodes | malloc bytes | 352 KB blocks | footprint |
+|---|---|---|---|---|
+| after the menu and 20 Pebble cycles | 46 320 | 26.8 MB | 54 | 23.0 MB |
+| after 3 receiver re-plugs | 49 666 | 30.6 MB | 63 | 24.6 MB |
+
+- **Leak (fixed):** the HID service thread (hidapi open/enumerate, hotplug callbacks)
+  had no autorelease pool. IOHIDLib is partly Objective-C and autoreleases objects on
+  every open/close, which then lived as long as the thread. `battbar debug-open-close`
+  (opens and closes the vendor interfaces of the receiver and the base, sends nothing),
+  90 opens: **+835 nodes, +350 KB** (180 `NSConcreteMutableData`, 2 per open) without a
+  pool, **+120 nodes, +19 KB** with one (the rest: 20 `IOHIDDeviceClass` of the
+  enumerated devices, not growing with opens). Every round of the service thread and the
+  base listener's close now run in a pool. On hardware afterwards: 6 receiver re-plugs,
+  malloc nodes 29 300–30 100 throughout (before: ~+1 100 per re-plug).
+- **Not a leak: the 352 KB blocks** are ColorSync transform tables
+  (`CMMParaCurveTag::MakeInvertedTRC`, allocated through
+  `CGColorSyncTransformCacheGetRetained` when AppKit redraws the status item;
+  `malloc_history` with `MallocStackLogging=lite`). CoreGraphics caches color
+  transforms; the blocks appear in steps of 9 on redraws (more after a wake or the menu
+  being opened), are mostly untouched pages (+0.3 MB footprint per step) and stop
+  growing (54 after a few minutes in short runs, 81 after the 6-hour run with two
+  wakes; constant over the 208-poll run).

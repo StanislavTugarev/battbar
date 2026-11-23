@@ -71,6 +71,16 @@ enum Cmd {
         #[arg(long, default_value_t = 180)]
         seconds: u64,
     },
+    /// Open and close the vendor HID interfaces of USB receivers and base stations N
+    /// times (development), then wait W seconds (to inspect this process's memory).
+    /// Sends nothing.
+    #[command(hide = true)]
+    DebugOpenClose {
+        #[arg(long, default_value_t = 20)]
+        rounds: u32,
+        #[arg(long, default_value_t = 60)]
+        wait: u64,
+    },
     /// Stress test (development): rebuild all providers N times and poll at once each
     /// time, to catch objects bound to threads that exit. Read-only.
     #[command(hide = true)]
@@ -429,6 +439,28 @@ fn main() {
             std::process::exit(0);
         }
         Cmd::DebugBaseListen { seconds } => base_listen(*seconds),
+        Cmd::DebugOpenClose { rounds, wait } => {
+            let ifaces: Vec<_> = battbar_hid::enumerate()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|i| matches!(i.vendor_id, 0x046d | 0x1038) && i.is_vendor_only())
+                .collect();
+            println!("pid {}; {} interface(s)", std::process::id(), ifaces.len());
+            for i in &ifaces {
+                println!("  {}", i.link_id());
+            }
+            println!("ready (before opening)");
+            std::thread::sleep(Duration::from_secs(*wait));
+            for _ in 0..*rounds {
+                for i in &ifaces {
+                    // Closed in a pool, like on the app's provider threads.
+                    battbar_core::objc_pool::with_pool(|| drop(battbar_hid::open(i)));
+                }
+            }
+            println!("opened and closed {rounds} times");
+            std::thread::sleep(Duration::from_secs(*wait));
+            println!("done");
+        }
         Cmd::DebugCheckCost { checks } => {
             check_cost(&db, *checks);
         }
