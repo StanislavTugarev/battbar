@@ -575,6 +575,13 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   clean install, macOS 26.1). Make everything as wide as the buttons: a short checkbox
   title (e.g. "Check for updates daily") with the privacy detail in the informative
   text, or a wrapping label of the buttons' width. Check the other alerts the same way.
+- **Notification permission in the first-run flow (next version).** battbar asks for
+  notification permission at start-up; macOS shows that request as a banner in the
+  top-right corner (placement is the system's, an app cannot move it), with no context
+  and easy to miss. Precede it with battbar's own centred alert in the first-run flow,
+  next to the login-item and update questions ("battbar can warn you when a battery is
+  low. Allow notifications?" — Continue / Not Now) and request authorization only after
+  Continue; "Not Now" asks again only from Settings. Same width rule as above.
 
 - **Kind of Bluetooth LE devices with only a Battery Service.** Check whether
   CoreBluetooth exposes the Appearance characteristic (0x2A01, Generic Access 0x1800)
