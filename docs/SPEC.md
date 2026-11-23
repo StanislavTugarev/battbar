@@ -568,6 +568,14 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
+- **First-launch alert width (next version).** The "Launch battbar at login?" alert
+  carries the update checkbox as an accessory view; its one-line title ("Check for
+  updates once a day (one request to GitHub, no device data)", `sizeToFit`) is wider
+  than the alert's buttons, so the alert stretches and looks odd (seen on the 0.5.0-rc.1
+  clean install, macOS 26.1). Make everything as wide as the buttons: a short checkbox
+  title (e.g. "Check for updates daily") with the privacy detail in the informative
+  text, or a wrapping label of the buttons' width. Check the other alerts the same way.
+
 - **Kind of Bluetooth LE devices with only a Battery Service.** Check whether
   CoreBluetooth exposes the Appearance characteristic (0x2A01, Generic Access 0x1800)
   of a connected peripheral; if so, derive the kind from it. If macOS hides it (it
