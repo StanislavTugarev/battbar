@@ -97,7 +97,8 @@ struct App {
     /// The overflow check's one-shot timer (none while the item is shown and settled).
     overflow_timer: Option<Retained<objc2_foundation::NSTimer>>,
     /// Occlusion notifications of the item's window: (window address, observer token).
-    occlusion_watch: Option<(usize, Retained<ProtocolObject<dyn NSObjectProtocol>>)>,
+    /// Observers of the item's window (occlusion, move), by window address.
+    occlusion_watch: Option<(usize, Vec<Observer>)>,
     /// IDs of the devices shown in the menu bar / device sections, in display order.
     shown: Vec<String>,
     actions: Vec<Action>,
@@ -123,6 +124,9 @@ struct App {
 thread_local! {
     static APP: RefCell<Option<App>> = const { RefCell::new(None) };
 }
+
+/// A token from `addObserverForName:object:queue:usingBlock:`.
+type Observer = Retained<ProtocolObject<dyn NSObjectProtocol>>;
 
 fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
     APP.with(|c| c.try_borrow_mut().ok().and_then(|mut g| g.as_mut().map(f)))
@@ -1232,9 +1236,22 @@ impl App {
     // runs periodically (SPEC "Menu bar display", DEVELOPMENT "Timers and wake-ups").
 
     /// Whether macOS shows the item (the visible bit of its window's occlusion state).
-    fn item_visible(&self) -> Option<bool> {
+    /// The item as the overflow check sees it: shown, hidden for lack of room, or
+    /// hidden with the whole menu bar (full-screen app, auto-hide).
+    fn item_seen(&self) -> Option<overflow::Seen> {
         let win = self.item.as_ref()?.button(self.mtm)?.window()?;
-        Some(win.occlusionState().0 & objc2_app_kit::NSWindowOcclusionState::Visible.0 != 0)
+        let rect = |r: objc2_foundation::NSRect| overflow::Rect {
+            x: r.origin.x,
+            y: r.origin.y,
+            w: r.size.width,
+            h: r.size.height,
+        };
+        let screens: Vec<overflow::Rect> = objc2_app_kit::NSScreen::screens(self.mtm).iter().map(|s| rect(s.frame())).collect();
+        if !overflow::in_menu_bar(rect(win.frame()), &screens) {
+            return Some(overflow::Seen::MenuBarHidden);
+        }
+        let visible = win.occlusionState().0 & objc2_app_kit::NSWindowOcclusionState::Visible.0 != 0;
+        Some(if visible { overflow::Seen::Shown } else { overflow::Seen::Hidden })
     }
 
     /// Subscribe to occlusion changes of the item's window; again if AppKit replaced
@@ -1248,25 +1265,34 @@ impl App {
             return;
         }
         let center = objc2_foundation::NSNotificationCenter::defaultCenter();
-        if let Some((_, token)) = self.occlusion_watch.take() {
-            let token: &AnyObject = token.as_ref();
-            unsafe { center.removeObserver(token) };
+        if let Some((_, tokens)) = self.occlusion_watch.take() {
+            for token in tokens {
+                let token: &AnyObject = token.as_ref();
+                unsafe { center.removeObserver(token) };
+            }
         }
         let block = block2::RcBlock::new(|_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
             with_app(|a| a.on_occlusion());
         });
-        let token = unsafe {
+        // Occlusion: shown/hidden. Move: the menu bar slid in or out (a hidden item stays
+        // hidden when a full-screen app ends, so occlusion alone says nothing then).
+        let tokens = [unsafe { objc2_app_kit::NSWindowDidChangeOcclusionStateNotification }, unsafe {
+            objc2_app_kit::NSWindowDidMoveNotification
+        }]
+        .into_iter()
+        .map(|name| unsafe {
             center.addObserverForName_object_queue_usingBlock(
-                Some(objc2_app_kit::NSWindowDidChangeOcclusionStateNotification),
+                Some(name),
                 Some(&win),
                 Some(&objc2_foundation::NSOperationQueue::mainQueue()),
                 &block,
             )
-        };
-        self.occlusion_watch = Some((addr, token));
+        })
+        .collect();
+        self.occlusion_watch = Some((addr, tokens));
     }
 
-    fn log_visibility(&self, why: &str, visible: bool) {
+    fn log_visibility(&self, why: &str, visible: overflow::Seen) {
         if std::env::var_os("BATTBAR_LOG").is_some() {
             let frame = self
                 .item
@@ -1274,7 +1300,7 @@ impl App {
                 .and_then(|i| i.button(self.mtm))
                 .and_then(|b| b.window())
                 .map(|w| w.frame());
-            eprintln!("[{}] {why}: status item visible={visible} frame={frame:?}", local_time());
+            eprintln!("[{}] {why}: status item {visible:?} frame={frame:?}", local_time());
         }
     }
 
@@ -1282,9 +1308,9 @@ impl App {
         if self.settings.display_mode() != DisplayMode::Expanded {
             return;
         }
-        let Some(visible) = self.item_visible() else { return };
-        self.log_visibility("occlusion changed", visible);
-        let (outcome, timer) = self.overflow.occlusion(std::time::Instant::now(), visible);
+        let Some(seen) = self.item_seen() else { return };
+        self.log_visibility("item window changed", seen);
+        let (outcome, timer) = self.overflow.occlusion(std::time::Instant::now(), seen);
         self.overflow_apply(outcome, timer);
     }
 
@@ -1300,9 +1326,9 @@ impl App {
         if self.settings.display_mode() != DisplayMode::Expanded {
             return;
         }
-        let visible = self.item_visible().unwrap_or(true);
-        self.log_visibility("overflow check", visible);
-        let (outcome, timer) = self.overflow.fire(std::time::Instant::now(), visible);
+        let seen = self.item_seen().unwrap_or(overflow::Seen::Shown);
+        self.log_visibility("overflow check", seen);
+        let (outcome, timer) = self.overflow.fire(std::time::Instant::now(), seen);
         self.overflow_apply(outcome, timer);
     }
 
@@ -1554,6 +1580,21 @@ fn main() {
             Some(&objc2_foundation::NSOperationQueue::mainQueue()),
             &screens_changed,
         )
+    };
+    // Another space (leaving a full-screen app): the menu bar may be back with the item
+    // still hidden; look again.
+    let space_changed = block2::RcBlock::new(|_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+        with_app(|a| a.on_occlusion());
+    });
+    let _space_observer = unsafe {
+        NSWorkspace::sharedWorkspace()
+            .notificationCenter()
+            .addObserverForName_object_queue_usingBlock(
+                Some(objc2_app_kit::NSWorkspaceActiveSpaceDidChangeNotification),
+                None,
+                Some(&objc2_foundation::NSOperationQueue::mainQueue()),
+                &space_changed,
+            )
     };
     notify::request_authorization();
     // First-run question, once the run loop is up. Postponed while App Translocation is

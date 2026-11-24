@@ -52,12 +52,13 @@ fn snapshot(mtm: MainThreadMarker, item: &NSStatusItem) -> String {
     let occlusion = win.occlusionState().0;
     let visible_bit = occlusion & 2 != 0;
     let mut s = format!(
-        "front={front} item={} occlusion=0x{occlusion:x}({}) window_visible={} active_space={} item_visible={}",
+        "front={front} item={} occlusion=0x{occlusion:x}({}) window_visible={} active_space={} item_visible={} menu_bar_visible={}",
         r(f),
         if visible_bit { "visible" } else { "NOT visible" },
         win.isVisible(),
         win.isOnActiveSpace(),
-        item.isVisible()
+        item.isVisible(),
+        objc2_app_kit::NSMenu::menuBarVisible(mtm)
     );
     match win.screen() {
         Some(scr) => {

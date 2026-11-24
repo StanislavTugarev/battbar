@@ -4,6 +4,13 @@
 //! clears; SPEC "Menu bar display"). battbar then switches the **setting** to Collapsed
 //! and says so. It never expands by itself — only the user's Expand does.
 //!
+//! A full-screen app (a video, a game) or "automatically hide the menu bar" hides the
+//! **whole** menu bar: the item is not visible then either, but that says nothing about
+//! space. The item's window then lies above the top edge of its screen (measured:
+//! y = screen top while hidden, in the menu bar band when shown or hidden for lack of
+//! space; DISCOVERY "Full-screen apps"), so the app reports [`Seen::MenuBarHidden`] and
+//! the guard waits until the menu bar is back.
+//!
 //! Event-driven, no polling: the app feeds in occlusion notifications of the item's
 //! window and content/screen changes, and keeps at most **one one-shot timer**, as each
 //! call tells it ([`Timer`]). When the item is shown and settled there is no timer.
@@ -17,6 +24,51 @@ use std::time::{Duration, Instant};
 pub const SETTLE: Duration = Duration::from_secs(1);
 /// How long the item must stay hidden (continuously, after settling) to collapse.
 pub const HIDDEN_FOR: Duration = Duration::from_secs(1);
+
+/// What the app sees of the item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Seen {
+    /// Visible in the menu bar.
+    Shown,
+    /// Not visible while the menu bar is shown: no room for it.
+    Hidden,
+    /// The whole menu bar is hidden (full-screen app, auto-hide): nothing to judge.
+    MenuBarHidden,
+}
+
+/// A rectangle in screen coordinates (points, origin bottom left, like AppKit).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// The menu bar is at most this tall (37–38 pt with a notch, 24–30 pt without).
+const MENU_BAR_MAX: f64 = 60.0;
+
+/// Whether the item's window sits in the menu bar band at the top of a screen — i.e.
+/// the menu bar is shown. When macOS hides the menu bar, the window moves above the
+/// screen's top edge (or gets zero height). The screens it overlaps horizontally count;
+/// if it overlaps none (an item without room can be pushed sideways off every screen),
+/// any screen does.
+pub fn in_menu_bar(item: Rect, screens: &[Rect]) -> bool {
+    if item.h <= 0.0 {
+        return false;
+    }
+    let top = item.y + item.h;
+    let in_band = |s: &&Rect| {
+        let screen_top = s.y + s.h;
+        top <= screen_top + 0.5 && top >= screen_top - MENU_BAR_MAX
+    };
+    let overlapping: Vec<&Rect> = screens.iter().filter(|s| item.x < s.x + s.w && item.x + item.w > s.x).collect();
+    if overlapping.is_empty() {
+        screens.iter().any(|s| in_band(&s))
+    } else {
+        overlapping.iter().any(in_band)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -66,13 +118,19 @@ impl OverflowGuard {
         hidden_since.max(self.settled_at.unwrap_or(hidden_since)) + HIDDEN_FOR
     }
 
-    /// The item window's occlusion state changed.
-    pub fn occlusion(&mut self, now: Instant, visible: bool) -> (Option<Outcome>, Timer) {
+    /// The item window's occlusion state changed, or it moved, or the active space
+    /// changed (the menu bar may be back while the item stays hidden).
+    pub fn occlusion(&mut self, now: Instant, seen: Seen) -> (Option<Outcome>, Timer) {
         if !self.armed {
             return (None, Timer::Keep);
         }
         let settled = self.settled_at.is_none_or(|s| now >= s);
-        if visible {
+        if seen == Seen::MenuBarHidden {
+            // Hidden with the whole menu bar: not "no room". Start over when it is back.
+            self.hidden_since = None;
+            return (None, if settled { Timer::Cancel } else { Timer::Keep });
+        }
+        if seen == Seen::Shown {
             self.hidden_since = None;
             if settled {
                 return (Some(Outcome::Fits), Timer::Cancel);
@@ -84,15 +142,19 @@ impl OverflowGuard {
         (None, Timer::At(self.due(since)))
     }
 
-    /// The one-shot timer fired; `visible` is the item's state now.
-    pub fn fire(&mut self, now: Instant, visible: bool) -> (Option<Outcome>, Timer) {
+    /// The one-shot timer fired; `seen` is the item's state now.
+    pub fn fire(&mut self, now: Instant, seen: Seen) -> (Option<Outcome>, Timer) {
         if !self.armed {
             return (None, Timer::Cancel);
         }
         if let Some(s) = self.settled_at.filter(|s| now < *s) {
             return (None, Timer::At(s));
         }
-        if visible {
+        if seen == Seen::MenuBarHidden {
+            self.hidden_since = None;
+            return (None, Timer::Cancel);
+        }
+        if seen == Seen::Shown {
             self.hidden_since = None;
             return (Some(Outcome::Fits), Timer::Cancel);
         }
@@ -122,7 +184,7 @@ mod tests {
         /// Timers set (each one fires at most once).
         timers_set: u32,
         fired: u32,
-        visible: bool,
+        seen: Seen,
         notifications: u32,
         t0: Instant,
     }
@@ -140,7 +202,7 @@ mod tests {
                 timer: None,
                 timers_set: 0,
                 fired: 0,
-                visible: false,
+                seen: Seen::Hidden,
                 notifications: 0,
                 t0,
             };
@@ -177,16 +239,21 @@ mod tests {
             while let Some(t) = self.timer.filter(|t| *t <= self.at(ms)) {
                 self.timer = None;
                 self.fired += 1;
-                let (o, timer) = self.guard.fire(t, self.visible);
+                let (o, timer) = self.guard.fire(t, self.seen);
                 self.apply(o, timer);
             }
         }
-        /// macOS shows or hides the item at `ms` (occlusion notification).
+        /// macOS shows or hides the item at `ms` (occlusion notification), with the
+        /// menu bar shown.
         fn occlusion(&mut self, ms: u64, visible: bool) {
+            self.seen_at(ms, if visible { Seen::Shown } else { Seen::Hidden });
+        }
+        /// What the app sees at `ms` (occlusion, move or space-change notification).
+        fn seen_at(&mut self, ms: u64, seen: Seen) {
             self.advance(ms);
-            self.visible = visible;
+            self.seen = seen;
             if self.settings.display_mode() == DisplayMode::Expanded {
-                let (o, t) = self.guard.occlusion(self.at(ms), visible);
+                let (o, t) = self.guard.occlusion(self.at(ms), seen);
                 self.apply(o, t);
             }
         }
@@ -291,8 +358,8 @@ mod tests {
         // A disarmed guard asks for no timer, whatever happens.
         let mut g = OverflowGuard::default();
         let t = Instant::now();
-        assert_eq!(g.occlusion(t, false), (None, Timer::Keep));
-        assert_eq!(g.fire(t, false), (None, Timer::Cancel));
+        assert_eq!(g.occlusion(t, Seen::Hidden), (None, Timer::Keep));
+        assert_eq!(g.fire(t, Seen::Hidden), (None, Timer::Cancel));
     }
 
     #[test]
@@ -343,5 +410,91 @@ mod tests {
         s.advance(31_000);
         assert_eq!(s.mode(), DisplayMode::Collapsed);
         assert_eq!(s.notifications, 3);
+    }
+
+    fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+        Rect { x, y, w, h }
+    }
+
+    /// Frames measured with `--probe-menu-bar` on the reference Mac (two displays:
+    /// 2560×1440 at the origin, 1920×1080 to its right at y = 229).
+    #[test]
+    fn menu_bar_band_from_measured_frames() {
+        let screens = [rect(0.0, 0.0, 2560.0, 1440.0), rect(2560.0, 229.0, 1920.0, 1080.0)];
+        // Shown (or hidden for lack of space) in the menu bar of either display.
+        assert!(in_menu_bar(rect(1539.0, 1410.0, 136.0, 30.0), &screens));
+        assert!(in_menu_bar(rect(3459.0, 1279.0, 136.0, 30.0), &screens));
+        // Too wide to fit (2416 pt): hidden in the menu bar band, partly off its display.
+        assert!(in_menu_bar(rect(1179.0, 1279.0, 2416.0, 30.0), &screens));
+        // Full-screen video: the menu bar slid up, the window lies above the top edge.
+        assert!(!in_menu_bar(rect(1539.0, 1440.0, 136.0, 30.0), &screens));
+        assert!(
+            !in_menu_bar(rect(1539.0, 1440.0, 136.0, 0.0), &screens),
+            "zero height while sliding"
+        );
+        // A display placed above the main one: still above the main one's menu bar, and
+        // nowhere near the top of the upper display.
+        let stacked = [rect(0.0, 0.0, 2560.0, 1440.0), rect(0.0, 1440.0, 2560.0, 1440.0)];
+        assert!(!in_menu_bar(rect(1539.0, 1440.0, 136.0, 30.0), &stacked));
+        assert!(in_menu_bar(rect(1539.0, 2850.0, 136.0, 30.0), &stacked));
+        // Side by side with different tops (the right one 30 pt higher): full screen on
+        // the left puts the window at the right one's menu bar height, but not above it.
+        let uneven = [rect(0.0, 0.0, 2560.0, 1440.0), rect(2560.0, 0.0, 2560.0, 1470.0)];
+        assert!(!in_menu_bar(rect(1539.0, 1440.0, 136.0, 30.0), &uneven));
+        // Without room, pushed sideways off every screen but still at menu bar height.
+        assert!(in_menu_bar(rect(-400.0, 1410.0, 136.0, 30.0), &screens));
+    }
+
+    /// A full-screen app hides the whole menu bar for minutes: no collapse, no
+    /// notification; back on the desktop with the item shown, nothing happened.
+    #[test]
+    fn full_screen_app_does_not_collapse() {
+        let mut s = Sim::new();
+        s.occlusion(400, true);
+        s.advance(5_000);
+        // A video goes full screen: the item is hidden first while the menu bar slides
+        // up (still in the band), then the window is above the screen.
+        s.occlusion(10_000, false);
+        s.seen_at(10_400, Seen::MenuBarHidden);
+        s.advance(600_000);
+        assert_eq!(s.mode(), DisplayMode::Expanded);
+        assert_eq!(s.notifications, 0);
+        assert_eq!(s.timer, None, "no timer while the menu bar is hidden");
+        // Back: the item is shown again.
+        s.occlusion(600_500, true);
+        s.advance(700_000);
+        assert_eq!(s.mode(), DisplayMode::Expanded);
+        assert_eq!(s.notifications, 0);
+    }
+
+    /// Even when the timer fires during the slide (no move notification in time), the
+    /// state at that moment decides.
+    #[test]
+    fn timer_during_full_screen_does_not_collapse() {
+        let mut s = Sim::new();
+        s.occlusion(400, true);
+        s.occlusion(10_000, false);
+        s.seen = Seen::MenuBarHidden; // moved, without a notification
+        s.advance(20_000);
+        assert_eq!(s.mode(), DisplayMode::Expanded);
+        assert_eq!(s.notifications, 0);
+    }
+
+    /// Leaving a full-screen app to a desktop where the item really has no room: the
+    /// item was hidden all along (no occlusion change), but the move or space change
+    /// says the menu bar is back, and the usual 1 s rule applies.
+    #[test]
+    fn no_room_after_leaving_full_screen_still_collapses() {
+        let mut s = Sim::new();
+        s.occlusion(400, true);
+        s.occlusion(10_000, false);
+        s.seen_at(10_400, Seen::MenuBarHidden);
+        s.advance(60_000);
+        s.seen_at(60_000, Seen::Hidden); // back in the band, still hidden
+        s.advance(60_900);
+        assert_eq!(s.mode(), DisplayMode::Expanded, "not before 1 s");
+        s.advance(61_100);
+        assert_eq!(s.mode(), DisplayMode::Collapsed);
+        assert_eq!(s.notifications, 1);
     }
 }

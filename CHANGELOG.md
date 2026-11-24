@@ -29,6 +29,9 @@ All notable changes to this project are documented here. The format follows
   up to 5 minutes (from cached `system_profiler` output); now only devices the system
   reports as connected are shown. battbar no longer keeps a Bluetooth LE connection of
   its own after reading.
+- With all devices shown in the menu bar, a full-screen video or game made battbar
+  collapse to one icon and post "Not enough space" (macOS hides the whole menu bar
+  then); a hidden menu bar no longer counts as missing space.
 - Memory grew by about 1 MB each time a receiver or base station was plugged in again
   (objects of the system's HID library were never released on battbar's HID thread).
 - A mouse or keyboard behind a just-plugged receiver, a mouse waking up, and a headset

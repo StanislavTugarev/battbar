@@ -497,6 +497,16 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   notifications). Logic in `overflow.rs`, tested (collapse after 1 s hidden, initial
   placement ignored, no self-expansion, repeated Expand → new collapse and
   notification).
+- **Full-screen apps and a hidden menu bar** (0.5): a full-screen app (video, game)
+  or "automatically hide the menu bar" hides the whole menu bar, and the item with it.
+  That is not "no room": the item's window then lies above the top edge of its screen
+  (or has zero height), while an item without room stays in the menu bar band. battbar
+  tells them apart by the window's frame (`overflow::in_menu_bar`; the screens it
+  overlaps horizontally, any screen if none) and does not count hidden time while the
+  menu bar is hidden. Besides occlusion it also listens to the item window's
+  `NSWindowDidMoveNotification` and `NSWorkspaceActiveSpaceDidChangeNotification`: an
+  item that has no room stays hidden when a full-screen app ends, so only the move or
+  the space change says the menu bar is back.
 - **Discovery** (2026-11-21, `battbar-app --probe-menu-bar`, Mac mini with two
   external displays, macOS 26): items of 200 and 400 pt were always shown; an item of
   1200 pt was shown with short app menus (Terminal, Finder, Claude) and hidden with

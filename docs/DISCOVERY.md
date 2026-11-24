@@ -631,3 +631,27 @@ Heap summary every 30 s while the menu was opened 5×, the Pebble switched off a
   being opened), are mostly untouched pages (+0.3 MB footprint per step) and stop
   growing (54 after a few minutes in short runs, 81 after the 6-hour run with two
   wakes; constant over the 208-poll run).
+
+## Full-screen apps (0.5.0-rc.1 bug, 2026-11-24)
+
+The expanded item collapsed and posted "Not enough space" whenever a video or game
+went full screen. `battbar-app --probe-menu-bar` (two displays: 2560×1440 at the
+origin, 1920×1080 to its right at y = 229) while a YouTube video went full screen and
+back, the menu bar was revealed with the pointer, and spaces were switched; then with
+an item too wide to fit (2400 pt):
+
+| Situation | Item visible | Item window frame | Window's screen |
+|---|---|---|---|
+| Desktop | yes | (1539, 1410, 136×30): in the menu bar band | the display |
+| Full-screen video | no | (1539, **1440**, 136×30): above the display's top edge; for one sample 136×0 | none |
+| Pointer reveals the menu bar | yes | back to 1410 within 0.5 s | the display |
+| No room (2400 pt item) | no | (1179, 1279, 2416×30): in the menu bar band of the second display | a display |
+
+The occlusion change comes first, the frame follows within 0.5 s (one sample showed
+"not visible" still at 1410). So the guard decides by the frame at the moment it
+checks: in the menu bar band of a screen → "hidden" means no room; above it → the whole
+menu bar is hidden, nothing is counted. Tests with these frames in `overflow.rs`
+(`menu_bar_band_from_measured_frames`, `full_screen_app_does_not_collapse`,
+`timer_during_full_screen_does_not_collapse`,
+`no_room_after_leaving_full_screen_still_collapses`).
+
