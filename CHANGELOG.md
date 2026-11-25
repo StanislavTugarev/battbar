@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-11-23
+## [0.5.0] - 2026-11-25
 
 ### Added
 
@@ -32,6 +32,9 @@ All notable changes to this project are documented here. The format follows
 - With all devices shown in the menu bar, a full-screen video or game made battbar
   collapse to one icon and post "Not enough space" (macOS hides the whole menu bar
   then); a hidden menu bar no longer counts as missing space.
+- The first-run question (Launch at Login, with the update checkbox) was stretched to
+  almost twice its normal width by the checkbox's long title; the title is short now
+  ("Check for updates daily") and what the check sends is said in the text.
 - Memory grew by about 1 MB each time a receiver or base station was plugged in again
   (objects of the system's HID library were never released on battbar's HID thread).
 - A mouse or keyboard behind a just-plugged receiver, a mouse waking up, and a headset

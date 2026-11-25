@@ -212,15 +212,52 @@ fn unix_now() -> u64 {
 }
 
 /// Accessory checkbox for the first-run questions (unchecked: the check is opt-in).
-fn update_checkbox(mtm: MainThreadMarker) -> Retained<NSButton> {
-    let b = unsafe {
-        NSButton::checkboxWithTitle_target_action(
-            &ns("Check for updates once a day (one request to GitHub, no device data)"),
-            None,
-            None,
-            mtm,
-        )
+/// The first-run question (Launch at Login), with the update checkbox when that was
+/// not answered yet.
+fn first_run_alert(mtm: MainThreadMarker, offer_updates: bool) -> (Retained<NSAlert>, Option<Retained<NSButton>>) {
+    let alert = NSAlert::new(mtm);
+    alert.setMessageText(&ns("Launch battbar at login?"));
+    // The checkbox title stays short so the alert keeps the width of its buttons; what
+    // the update check does is said in the text above it.
+    let updates = if offer_updates {
+        "\n\nThe update check asks GitHub once a day whether a newer version exists: one request, no device data."
+    } else {
+        ""
     };
+    alert.setInformativeText(&ns(&format!(
+        "battbar can start automatically when you log in, so the battery icons are always there. \
+         You can change this later under Settings in the battbar menu.{updates}"
+    )));
+    alert.addButtonWithTitle(&ns("Launch at Login"));
+    alert.addButtonWithTitle(&ns("Not Now"));
+    let checkbox = offer_updates.then(|| update_checkbox(mtm));
+    if let Some(c) = &checkbox {
+        alert.setAccessoryView(Some(c));
+    }
+    (alert, checkbox)
+}
+
+/// Debug builds: `--probe-first-run-alert` lays out the first-run alert without showing
+/// it and prints the window, button and checkbox widths (the alert should be no wider
+/// than its buttons need).
+#[cfg(debug_assertions)]
+fn probe_first_run_alert() {
+    let mtm = MainThreadMarker::new().expect("main thread");
+    let _app = NSApplication::sharedApplication(mtm);
+    let (alert, checkbox) = first_run_alert(mtm, true);
+    alert.layout();
+    let win = alert.window();
+    println!("window width {:.0}", win.frame().size.width);
+    for b in alert.buttons().iter() {
+        println!("button \"{}\" width {:.0}", b.title(), b.frame().size.width);
+    }
+    if let Some(c) = checkbox {
+        println!("checkbox \"{}\" width {:.0}", c.title(), c.frame().size.width);
+    }
+}
+
+fn update_checkbox(mtm: MainThreadMarker) -> Retained<NSButton> {
+    let b = unsafe { NSButton::checkboxWithTitle_target_action(&ns("Check for updates daily"), None, None, mtm) };
     b.setState(NSControlStateValueOff);
     b.sizeToFit();
     b
@@ -385,19 +422,8 @@ fn run_post(p: Post) {
         }
         Post::AskLaunchAtLogin => {
             NSApplication::sharedApplication(mtm).activate();
-            let alert = NSAlert::new(mtm);
-            alert.setMessageText(&ns("Launch battbar at login?"));
-            alert.setInformativeText(&ns(
-                "battbar can start automatically when you log in, so the battery icons are always there. \
-                 You can change this later under Settings in the battbar menu.",
-            ));
-            alert.addButtonWithTitle(&ns("Launch at Login"));
-            alert.addButtonWithTitle(&ns("Not Now"));
             let offer_updates = with_app(|a| !a.settings.asked_update_check).unwrap_or(false);
-            let checkbox = offer_updates.then(|| update_checkbox(mtm));
-            if let Some(c) = &checkbox {
-                alert.setAccessoryView(Some(c));
-            }
+            let (alert, checkbox) = first_run_alert(mtm, offer_updates);
             let yes = alert.runModal() == 1000;
             with_app(|a| {
                 a.settings.asked_launch_at_login = true; // "Not Now" = do not ask again
@@ -1510,6 +1536,11 @@ fn main() {
     if let Some(i) = std::env::args().position(|a| a == "--render-bar-preview") {
         let dir = std::path::PathBuf::from(std::env::args().nth(i + 1).unwrap_or_else(|| ".".into()));
         render_bar_preview(&dir);
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().any(|a| a == "--probe-first-run-alert") {
+        probe_first_run_alert();
         return;
     }
     if std::env::args().any(|a| a == "--login-status") {

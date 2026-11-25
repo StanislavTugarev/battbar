@@ -655,3 +655,13 @@ menu bar is hidden, nothing is counted. Tests with these frames in `overflow.rs`
 `timer_during_full_screen_does_not_collapse`,
 `no_room_after_leaving_full_screen_still_collapses`).
 
+## First-run alert width (0.5.0-rc.2, 2026-11-25)
+
+The Launch-at-Login alert with the update checkbox looked stretched on a clean install.
+`battbar-app --probe-first-run-alert` (debug builds: lays the alert out without showing
+it): window 478 pt, buttons 228 pt, checkbox "Check for updates once a day (one request
+to GitHub, no device data)" 446 pt — the checkbox set the width. With the title "Check
+for updates daily" and the detail moved into the informative text: window 260 pt (the
+standard alert width), buttons 228 pt, checkbox 166 pt. The other alerts have no
+accessory view and keep the standard width.
+
