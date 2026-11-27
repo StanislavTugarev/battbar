@@ -4,6 +4,7 @@
 
 mod alerts;
 mod bar;
+mod menubar;
 mod overflow;
 mod probe;
 mod ui;
@@ -1273,7 +1274,11 @@ impl App {
             h: r.size.height,
         };
         let screens: Vec<overflow::Rect> = objc2_app_kit::NSScreen::screens(self.mtm).iter().map(|s| rect(s.frame())).collect();
-        if !overflow::in_menu_bar(rect(win.frame()), &screens) {
+        let frame = rect(win.frame());
+        // macOS 26 moves the item's window above the display; macOS 27 leaves it and
+        // takes the display's menu bar window off screen.
+        let bar_shown = menubar::menu_bar_shown(frame.x, frame.w, &menubar::windows()).unwrap_or(true);
+        if !overflow::in_menu_bar(frame, &screens) || !bar_shown {
             return Some(overflow::Seen::MenuBarHidden);
         }
         let visible = win.occlusionState().0 & objc2_app_kit::NSWindowOcclusionState::Visible.0 != 0;

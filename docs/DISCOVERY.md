@@ -647,6 +647,24 @@ an item too wide to fit (2400 pt):
 | Pointer reveals the menu bar | yes | back to 1410 within 0.5 s | the display |
 | No room (2400 pt item) | no | (1179, 1279, 2416×30): in the menu bar band of the second display | a display |
 
+**macOS 27 (rc.2 still collapsed, 2026-11-27, macOS 27.2.1).** The item's window no
+longer moves: hidden at (1985, 1410), in the menu bar band, during a full-screen Chrome
+video, so the rule above saw "no room". A window-list watcher (`CGWindowListCopyWindowInfo`,
+on-screen windows; CoreGraphics coordinates, displays 2560×1440 at the origin and
+1920×1080 at (2560, 131)):
+
+| Situation | Main-menu-level windows (Window Server, layer 24) | Window covering display 0 |
+|---|---|---|
+| Desktop | (0, 0, 2560×30) and (2560, 131, 1920×30) | none |
+| Full-screen video on display 0 | only (2560, 131, 1920×30) | Chrome (0, 0, 2560×1440) |
+| Entering/leaving (space slide) | display 0's bar at x = −1396 … −8 | Chrome |
+
+So macOS 27 takes the display's menu bar window off screen. battbar now also checks that
+the display under its item has a main-menu-level window at its top edge (≤ 60 pt tall,
+covering at least half its width); without one the menu bar is hidden. Tests with these
+lists in `menubar.rs` (`menu_bar_windows_measured_on_macos_27`). macOS 26's frame rule
+stays as a second signal.
+
 The occlusion change comes first, the frame follows within 0.5 s (one sample showed
 "not visible" still at 1410). So the guard decides by the frame at the moment it
 checks: in the menu bar band of a screen → "hidden" means no room; above it → the whole

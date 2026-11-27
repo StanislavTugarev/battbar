@@ -60,6 +60,12 @@ fn snapshot(mtm: MainThreadMarker, item: &NSStatusItem) -> String {
         item.isVisible(),
         objc2_app_kit::NSMenu::menuBarVisible(mtm)
     );
+    let w = crate::menubar::windows();
+    s.push_str(&format!(
+        " menu_bar_window={:?} (menu bars: {})",
+        crate::menubar::menu_bar_shown(f.origin.x, f.size.width, &w),
+        w.menu_bars.len()
+    ));
     match win.screen() {
         Some(scr) => {
             let (left, right) = (scr.auxiliaryTopLeftArea(), scr.auxiliaryTopRightArea());

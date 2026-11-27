@@ -499,11 +499,13 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   notification).
 - **Full-screen apps and a hidden menu bar** (0.5): a full-screen app (video, game)
   or "automatically hide the menu bar" hides the whole menu bar, and the item with it.
-  That is not "no room": the item's window then lies above the top edge of its screen
-  (or has zero height), while an item without room stays in the menu bar band. battbar
-  tells them apart by the window's frame (`overflow::in_menu_bar`; the screens it
-  overlaps horizontally, any screen if none) and does not count hidden time while the
-  menu bar is hidden. Besides occlusion it also listens to the item window's
+  That is not "no room". macOS 26 moves the item's window above the top edge of its
+  screen (or gives it zero height) — an item without room stays in the menu bar band
+  (`overflow::in_menu_bar`); macOS 27 leaves the item's window in place and takes the
+  display's menu bar window (Window Server, main-menu level, at the display's top edge)
+  off screen (`menubar::menu_bar_shown`, from `CGWindowListCopyWindowInfo`: levels and
+  bounds only, no window titles, no screen-recording permission). Either one means
+  "menu bar hidden", and battbar does not count hidden time then. Besides occlusion it also listens to the item window's
   `NSWindowDidMoveNotification` and `NSWorkspaceActiveSpaceDidChangeNotification`: an
   item that has no room stays hidden when a full-screen app ends, so only the move or
   the space change says the menu bar is back.
