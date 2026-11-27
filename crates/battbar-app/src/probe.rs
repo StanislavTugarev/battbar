@@ -117,6 +117,77 @@ fn snapshot(mtm: MainThreadMarker, item: &NSStatusItem) -> String {
     s
 }
 
+/// `--nudge`: for each width, settle 2 s, then +1 pt and back, sampling the window's
+/// edges every 0.1 s (does a 1-pt change show "fits" vs "hidden" like a large one?).
+pub fn nudge(widths: Vec<f64>) {
+    let mtm = MainThreadMarker::new().expect("main thread");
+    let app = NSApplication::sharedApplication(mtm);
+    app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+    let _activity = objc2_foundation::NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+        objc2_foundation::NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+        &NSString::from_str("battbar menu bar probe"),
+    );
+    let item: Retained<NSStatusItem> = NSStatusBar::systemStatusBar().statusItemWithLength(widths[0]);
+    item.setAutosaveName(Some(&NSString::from_str("battbar_probe")));
+    if let Some(b) = item.button(mtm) {
+        b.setTitle(&NSString::from_str("◀ nudge ▶"));
+    }
+    // A plan of (time in 0.1 s steps, action): set width, or sample.
+    let mut plan: Vec<(u32, Option<f64>)> = vec![];
+    let mut t = 0;
+    for w in &widths {
+        plan.push((t, Some(*w)));
+        t += 20;
+        for _ in 0..5 {
+            plan.push((t, None));
+            t += 1;
+        }
+        plan.push((t, Some(*w + 1.0)));
+        for _ in 0..10 {
+            t += 1;
+            plan.push((t, None));
+        }
+        plan.push((t, Some(*w)));
+        for _ in 0..10 {
+            t += 1;
+            plan.push((t, None));
+        }
+        t += 5;
+    }
+    let end = t + 5;
+    let tick = std::cell::Cell::new(0u32);
+    let block = RcBlock::new(move |_t: std::ptr::NonNull<NSTimer>| {
+        let now = tick.get();
+        tick.set(now + 1);
+        for (at, action) in plan.iter().filter(|(at, _)| *at == now) {
+            match action {
+                Some(w) => {
+                    item.setLength(*w);
+                    println!("[{:>5.1}s] set {w} pt", *at as f64 / 10.0);
+                }
+                None => {
+                    if let Some(win) = item.button(mtm).and_then(|b| b.window()) {
+                        let f = win.frame();
+                        println!(
+                            "[{:>5.1}s]   left {:.0} right {:.0} width {:.0}",
+                            *at as f64 / 10.0,
+                            f.origin.x,
+                            f.origin.x + f.size.width,
+                            f.size.width
+                        );
+                    }
+                }
+            }
+        }
+        let _ = std::io::stdout().flush();
+        if now >= end {
+            std::process::exit(0);
+        }
+    });
+    let _timer = unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.1, true, &block) };
+    app.run();
+}
+
 pub fn run(width: f64, grow: Option<(f64, f64)>, ramp: Option<(f64, f64)>) {
     let mtm = MainThreadMarker::new().expect("main thread");
     let app = NSApplication::sharedApplication(mtm);

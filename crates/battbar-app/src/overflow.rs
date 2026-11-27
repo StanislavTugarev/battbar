@@ -170,12 +170,51 @@ impl OverflowGuard {
     }
 }
 
-/// The automatic fallback needs macOS to say that it hid the item. macOS 26 and older
-/// do (occlusion); macOS 27 hides an item without room but reports it visible
-/// (DISCOVERY "Full-screen apps"), so the fallback is off there: re-opening battbar is
-/// the way out (see [`reopen`]).
-pub fn auto_collapse_supported(macos_major: isize) -> bool {
-    macos_major <= 26
+/// How battbar tells that macOS hid the expanded item for lack of room.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Detection {
+    /// macOS 26 and older: the occlusion visible bit clears (with [`OverflowGuard`]).
+    Occlusion,
+    /// macOS 27 and later: the occlusion bit stays set; a 1-pt change of the item's
+    /// width shows it instead ([`judge_nudge`]; DISCOVERY "macOS 27: can an app tell").
+    Geometry,
+}
+
+pub fn detection(macos_major: isize) -> Detection {
+    if macos_major <= 26 {
+        Detection::Occlusion
+    } else {
+        Detection::Geometry
+    }
+}
+
+/// What a width change of battbar's own item says (macOS 27).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edges {
+    /// The right edge stayed (at the neighbouring item): it fits.
+    Fits,
+    /// The left edge stayed while the width changed: macOS hid it, the window grows
+    /// over the neighbours instead of to the left.
+    Hidden,
+    /// Neither (something else moved at the same time) or no width change: no verdict.
+    Unknown,
+}
+
+/// Compare the item window's frame before and after battbar changed the item's width.
+/// Measured on macOS 27.2.1: fitting 400 → 401 pt keeps the right edge (1714), hidden
+/// 1500 → 1501 pt keeps the left edge (898), both within 0.1 s.
+pub fn judge_nudge(before: Rect, after: Rect) -> Edges {
+    const EPS: f64 = 0.5;
+    if (after.w - before.w).abs() < EPS {
+        return Edges::Unknown;
+    }
+    let right_kept = ((after.x + after.w) - (before.x + before.w)).abs() < EPS;
+    let left_kept = (after.x - before.x).abs() < EPS;
+    match (right_kept, left_kept) {
+        (true, false) => Edges::Fits,
+        (false, true) => Edges::Hidden,
+        _ => Edges::Unknown,
+    }
 }
 
 /// What re-opening the running battbar (Spotlight, Applications, `open -a battbar`) did.
@@ -528,11 +567,40 @@ mod tests {
     }
 
     #[test]
-    fn auto_collapse_only_up_to_macos_26() {
-        assert!(auto_collapse_supported(14));
-        assert!(auto_collapse_supported(26));
-        assert!(!auto_collapse_supported(27));
-        assert!(!auto_collapse_supported(28));
+    fn occlusion_up_to_macos_26_geometry_from_27() {
+        assert_eq!(detection(14), Detection::Occlusion);
+        assert_eq!(detection(26), Detection::Occlusion);
+        assert_eq!(detection(27), Detection::Geometry);
+        assert_eq!(detection(28), Detection::Geometry);
+    }
+
+    /// Frames measured with `--probe-menu-bar --nudge` on macOS 27.2.1 (Claude in front,
+    /// the item fits up to 1200 pt).
+    #[test]
+    fn a_one_point_nudge_tells_fits_from_hidden() {
+        let fits_before = rect(1298.0, 1410.0, 416.0, 30.0);
+        let fits_after = rect(1297.0, 1410.0, 417.0, 30.0);
+        assert_eq!(judge_nudge(fits_before, fits_after), Edges::Fits);
+        let wide_before = rect(898.0, 1410.0, 816.0, 30.0);
+        let wide_after = rect(897.0, 1410.0, 817.0, 30.0);
+        assert_eq!(judge_nudge(wide_before, wide_after), Edges::Fits);
+        let hidden_before = rect(898.0, 1410.0, 1516.0, 30.0);
+        let hidden_after = rect(898.0, 1410.0, 1517.0, 30.0);
+        assert_eq!(judge_nudge(hidden_before, hidden_after), Edges::Hidden);
+        // Expanding from the collapsed icon (34 pt) into no room: the window keeps the
+        // icon's left edge and runs off to the right (the 2588-pt development build).
+        assert_eq!(
+            judge_nudge(rect(1720.0, 1410.0, 34.0, 30.0), rect(1720.0, 1410.0, 2588.0, 30.0)),
+            Edges::Hidden
+        );
+        // Expanding into room: the right edge stays (rc.2: 34 → 190 pt at 2172).
+        assert_eq!(
+            judge_nudge(rect(2138.0, 1410.0, 34.0, 30.0), rect(1982.0, 1410.0, 190.0, 30.0)),
+            Edges::Fits
+        );
+        // Something else moved at the same time, or no width change: no verdict.
+        assert_eq!(judge_nudge(fits_before, rect(1300.0, 1410.0, 417.0, 30.0)), Edges::Unknown);
+        assert_eq!(judge_nudge(fits_before, fits_before), Edges::Unknown);
     }
 
     /// Re-opening the running app collapses an expanded island (the way out when macOS

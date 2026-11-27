@@ -740,3 +740,22 @@ re-opening the app as the way out; the automatic fallback is off by OS version. 
 search is in the SPEC backlog ("Detect a hidden item on macOS 27"). Related: macOS 27
 hides menu item images by default (`NSMenuItem.preferredImageVisibility`, new in the 27
 SDK); battbar's menu follows the system style.
+
+**1-pt nudge** (`--probe-menu-bar --nudge 400,800,1500,2000`, Claude in front; the item
+fits up to 1200 pt; the window's edges every 0.1 s):
+
+| Width → +1 pt | Left edge | Right edge | Seen |
+|---|---|---|---|
+| 400 → 401 | 1298 → 1297 | **1714 → 1714** | shown |
+| 800 → 801 | 898 → 897 | **1714 → 1714** | shown |
+| 1500 → 1501 | **898 → 898** | 2414 → 2415 | hidden |
+| 2000 → 2001 | **898 → 898** | 2914 → 2915 | hidden |
+
+The frame changed within 0.1 s and went back with the width. Implemented in 0.5.0-rc.4
+(SPEC "How macOS hid the item is told"). In the app, through the image (an explicit
+length grew the window by 17 pt, not 1). Checked in the app (development build, macOS
+27.2.1): item that fits → "Fits" (e.g. 1516/198 → 1515/199), stays expanded; 1400 pt
+extra → "Hidden" (3599/1598 → 3599/1599), collapsed with the notification; full-screen
+video, Mission Control, switching desktops, lock/unlock → no collapse, nudges only with
+the menu bar shown (11 between 13:55 and 13:56, all "Fits").
+

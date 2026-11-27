@@ -89,6 +89,13 @@ pub fn neutral_glyph() -> Option<Retained<NSImage>> {
 
 /// Template image for the status item. `None` only if not even the neutral glyph loads.
 pub fn image(view: &BarView) -> Option<Retained<NSImage>> {
+    image_with_extra(view, 0.0)
+}
+
+/// The same image `extra` points wider (empty on the right): the 1-pt nudge that shows
+/// on macOS 27 whether the item fits (`overflow::judge_nudge`). The neutral glyph (no
+/// devices) is not widened.
+pub fn image_with_extra(view: &BarView, extra: f64) -> Option<Retained<NSImage>> {
     if view.segments.is_empty() {
         let img = neutral_glyph()?;
         img.setAccessibilityDescription(Some(&NSString::from_str(&view.tooltip)));
@@ -97,7 +104,7 @@ pub fn image(view: &BarView) -> Option<Retained<NSImage>> {
     let font = NSFont::menuBarFontOfSize(0.0);
     let parts: Vec<Part> = view.segments.iter().map(|v| part(v, &font)).collect();
     let height = NSStatusBar::systemStatusBar().thickness().max(18.0);
-    let width = (parts.iter().map(|p| p.width).sum::<f64>() + SEGMENT_GAP * (parts.len() as f64 - 1.0)).ceil();
+    let width = (parts.iter().map(|p| p.width).sum::<f64>() + SEGMENT_GAP * (parts.len() as f64 - 1.0)).ceil() + extra;
     // Development: make the expanded item (several segments) wider to try the "not
     // enough space" fallback.
     #[cfg(debug_assertions)]

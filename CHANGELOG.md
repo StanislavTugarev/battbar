@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
   appear in 0.4). A re-scan every 5 minutes remains as a safety net.
 - Opening battbar again while it runs (Spotlight, Applications) collapses it to one
   icon and says so — the way back when the menu bar has no room for all devices.
+- macOS 27: battbar notices that the menu bar has no room for the expanded item (macOS
+  27 no longer reports a hidden item; battbar widens its item by 1 pt and looks where
+  it goes) and collapses to one icon, as on earlier versions.
+- Each device's section in the menu says its type and status in words ("G502 X PLUS —
+  mouse, 68%"), since macOS 27 shows no icons in menus.
 - Release candidates know their full version (e.g. `0.5.0-rc.1`): shown at the bottom
   of the menu, by `battbar --version` and in `battbar dump`. A candidate offers the
   final release as an update once it is out (before, both counted as `0.5.0`).
@@ -24,13 +29,6 @@ All notable changes to this project are documented here. The format follows
   [ADDING_A_DEVICE.md](docs/ADDING_A_DEVICE.md#how-to-collect-diagnostics); a new
   "Works with my device" template. SUPPORTED_DEVICES shows where a device was verified
   or that users reported it.
-
-### Known issues
-
-- macOS 27 hides the expanded item when the menu bar has no room for it but does not
-  tell apps, so the automatic switch to one icon is off there. If battbar is missing
-  from the menu bar, open it again (Spotlight or Applications): it collapses to one
-  icon.
 
 ### Fixed
 

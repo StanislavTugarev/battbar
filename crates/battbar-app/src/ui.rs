@@ -54,6 +54,34 @@ pub fn status_text(r: &Reading) -> String {
     }
 }
 
+/// The device type in words (the menu has no icons on macOS 27).
+pub fn kind_name(kind: DeviceKind) -> &'static str {
+    match kind {
+        DeviceKind::Mouse => "mouse",
+        DeviceKind::Keyboard => "keyboard",
+        DeviceKind::Headset => "headset",
+        DeviceKind::Headphones => "headphones",
+        DeviceKind::Gamepad => "gamepad",
+        DeviceKind::Other => "device",
+    }
+}
+
+/// A device's section title in the menu: name, type and short status, readable without
+/// the icon (macOS 27 hides menu item images by default), e.g.
+/// "G502 X PLUS — mouse, 68%", "Arctis Nova Pro Wireless — headset, ~88%, charging".
+pub fn section_title(d: &Device) -> String {
+    let r = &d.reading;
+    let status = match (percent_text(r), r.status) {
+        (Some(p), _) if r.charging == Some(true) => format!("{p}, charging"),
+        (Some(p), _) => p,
+        (None, Status::Asleep) => "asleep".into(),
+        (None, Status::Disconnected) => "disconnected".into(),
+        (None, Status::Error) => "error".into(),
+        (None, _) => "no battery value".into(),
+    };
+    format!("{} — {}, {status}", d.name, kind_name(d.kind))
+}
+
 pub fn item_view(d: &Device) -> ItemView {
     let r = &d.reading;
     let pct = percent_text(r);
@@ -458,5 +486,24 @@ mod tests {
         assert_eq!(visible(&devs, &s).len(), 1);
         s.hidden.push("x".into());
         assert!(visible(&devs, &s).is_empty());
+    }
+
+    /// Section titles say type and status in words (no icons in menus on macOS 27).
+    #[test]
+    fn section_titles_read_without_icons() {
+        let mouse = device("m", "G502 X PLUS", DeviceKind::Mouse, Some(68));
+        assert_eq!(section_title(&mouse), "G502 X PLUS — mouse, 68%");
+        let mut headset = device("h", "Arctis Nova Pro Wireless", DeviceKind::Headset, Some(88));
+        headset.reading.precision = Precision::Coarse;
+        headset.reading.charging = Some(true);
+        assert_eq!(section_title(&headset), "Arctis Nova Pro Wireless — headset, ~88%, charging");
+        let asleep = device("k", "G915", DeviceKind::Keyboard, None);
+        assert_eq!(section_title(&asleep), "G915 — keyboard, asleep");
+        let mut gone = device("g", "DualSense", DeviceKind::Gamepad, None);
+        gone.reading = Reading::with_status(Status::Disconnected);
+        assert_eq!(section_title(&gone), "DualSense — gamepad, disconnected");
+        let mut other = device("o", "Pen", DeviceKind::Other, None);
+        other.reading = Reading::with_status(Status::NotReported);
+        assert_eq!(section_title(&other), "Pen — device, no battery value");
     }
 }

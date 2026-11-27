@@ -95,8 +95,17 @@ struct App {
     /// What the item showed last (layout + segments), to restart the overflow check
     /// when it changes.
     bar_key: String,
-    /// The automatic "not enough space" fallback works on this macOS (26 and older).
-    auto_collapse: bool,
+    /// How a hidden expanded item is noticed on this macOS (occlusion up to 26, a 1-pt
+    /// nudge of the item's width from 27).
+    detection: overflow::Detection,
+    /// macOS 27: the pending nudge check (one-shot) and the frame before the nudge.
+    geo_timer: Option<Retained<objc2_foundation::NSTimer>>,
+    geo_before: Option<overflow::Rect>,
+    /// What the item shows now (to draw it 1 pt wider for the nudge and back).
+    bar_view: Option<ui::BarView>,
+    /// The menu bar is not on screen for the user: screen locked, screen saver running,
+    /// displays asleep (bits). No overflow verdicts then.
+    away: u8,
     /// The overflow check's one-shot timer (none while the item is shown and settled).
     overflow_timer: Option<Retained<objc2_foundation::NSTimer>>,
     /// Occlusion notifications of the item's window: (window address, observer token).
@@ -1073,8 +1082,9 @@ impl App {
             if i > 0 {
                 self.separator(&menu);
             }
-            // Header: icon + name; the device's actions in its submenu.
-            let actions = self.submenu(&menu, &d.name);
+            // Header: icon (hidden by macOS 27) + "name — type, status"; the device's
+            // actions in its submenu.
+            let actions = self.submenu(&menu, &ui::section_title(d));
             if let Some(item) = menu.itemArray().lastObject() {
                 let img = NSImage::imageWithSystemSymbolName_accessibilityDescription(&ns(ui::symbol(d.kind)), Some(&ns(&d.name)));
                 item.setImage(img.as_deref());
@@ -1196,17 +1206,23 @@ impl App {
         let it = self.status_item();
         if let Some(b) = it.button(self.mtm) {
             b.setImage(bar::image(&view).as_deref());
+            self.bar_view = Some(view.clone());
             b.setImagePosition(NSCellImagePosition::ImageOnly);
             b.setTitle(&ns(""));
             b.setToolTip(Some(&ns(&view.tooltip)));
         }
         self.watch_item_window();
         if restart {
-            let timer = match self.settings.display_mode() {
-                DisplayMode::Expanded if self.auto_collapse => self.overflow.changed(std::time::Instant::now()),
+            let expanded = self.settings.display_mode() == DisplayMode::Expanded;
+            let timer = match (self.detection, expanded) {
+                (overflow::Detection::Occlusion, true) => self.overflow.changed(std::time::Instant::now()),
                 _ => self.overflow.disarm(),
             };
             self.overflow_apply(None, timer);
+            // macOS 27: once the new width is placed, nudge it and look at the edges.
+            if self.detection == overflow::Detection::Geometry {
+                self.geo_schedule(if expanded { Some(overflow::SETTLE.as_secs_f64()) } else { None });
+            }
         }
         let menu = self.main_menu(&visible);
         #[cfg(debug_assertions)]
@@ -1278,6 +1294,10 @@ impl App {
     /// The item as the overflow check sees it: shown, hidden for lack of room, or
     /// hidden with the whole menu bar (full-screen app, auto-hide).
     fn item_seen(&self) -> Option<overflow::Seen> {
+        if self.away != 0 {
+            // Locked, screen saver, displays asleep: the user sees no menu bar.
+            return Some(overflow::Seen::MenuBarHidden);
+        }
         let win = self.item.as_ref()?.button(self.mtm)?.window()?;
         let rect = |r: objc2_foundation::NSRect| overflow::Rect {
             x: r.origin.x,
@@ -1381,7 +1401,7 @@ impl App {
     }
 
     fn on_occlusion(&mut self) {
-        if !self.auto_collapse || self.settings.display_mode() != DisplayMode::Expanded {
+        if self.detection != overflow::Detection::Occlusion || self.settings.display_mode() != DisplayMode::Expanded {
             return;
         }
         let Some(seen) = self.item_seen() else { return };
@@ -1391,15 +1411,138 @@ impl App {
     }
 
     fn on_screens_changed(&mut self) {
-        if self.auto_collapse && self.settings.display_mode() == DisplayMode::Expanded {
-            let timer = self.overflow.changed(std::time::Instant::now());
-            self.overflow_apply(None, timer);
+        if self.settings.display_mode() != DisplayMode::Expanded {
+            return;
+        }
+        match self.detection {
+            overflow::Detection::Occlusion => {
+                let timer = self.overflow.changed(std::time::Instant::now());
+                self.overflow_apply(None, timer);
+            }
+            overflow::Detection::Geometry => self.geo_schedule(Some(overflow::SETTLE.as_secs_f64())),
+        }
+    }
+
+    /// Another space (leaving a full-screen app, switching desktops), another front app
+    /// (its menus take more or less room), or the screen back (unlocked, screen saver
+    /// over, displays awake): look again.
+    fn on_menu_bar_context_changed(&mut self, after: f64) {
+        match self.detection {
+            overflow::Detection::Occlusion => self.on_occlusion(),
+            overflow::Detection::Geometry => {
+                if self.settings.display_mode() == DisplayMode::Expanded {
+                    self.geo_schedule(Some(after));
+                }
+            }
+        }
+    }
+
+    fn set_away(&mut self, bit: u8, away: bool) {
+        if away {
+            self.away |= bit;
+        } else {
+            self.away &= !bit;
+            self.on_menu_bar_context_changed(overflow::SETTLE.as_secs_f64());
+        }
+    }
+
+    /// The menu bar is on screen for the user right now (see `item_seen`).
+    fn menu_bar_up(&self) -> bool {
+        self.item_seen().is_some_and(|s| s != overflow::Seen::MenuBarHidden)
+    }
+
+    /// macOS 27: (re)schedule the nudge check `after` seconds from now; `None` cancels.
+    fn geo_schedule(&mut self, after: Option<f64>) {
+        if let Some(t) = self.geo_timer.take() {
+            t.invalidate();
+        }
+        if self.geo_before.take().is_some() {
+            // A nudge was under way: put the image back first.
+            self.geo_restore();
+        }
+        let Some(after) = after else { return };
+        let block = block2::RcBlock::new(|_t: std::ptr::NonNull<objc2_foundation::NSTimer>| {
+            with_app(|a| a.geo_start());
+        });
+        let secs = after.max(0.05);
+        let t = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(secs, false, &block) };
+        t.setTolerance(0.1);
+        self.geo_timer = Some(t);
+    }
+
+    /// Widen the item by 1 pt; `geo_finish` reads the edges a moment later.
+    fn geo_start(&mut self) {
+        self.geo_timer = None;
+        if self.settings.display_mode() != DisplayMode::Expanded || !self.menu_bar_up() {
+            return; // no verdict while the menu bar is not shown; its return looks again
+        }
+        let Some(win) = self.item.as_ref().and_then(|i| i.button(self.mtm)).and_then(|b| b.window()) else {
+            return;
+        };
+        let f = win.frame();
+        let before = overflow::Rect {
+            x: f.origin.x,
+            y: f.origin.y,
+            w: f.size.width,
+            h: f.size.height,
+        };
+        // 1 pt wider through the image: the item keeps its variable length, so the frame
+        // grows by exactly that (an explicit length adds other margins).
+        let (Some(view), Some(b)) = (self.bar_view.as_ref(), self.item.as_ref().and_then(|i| i.button(self.mtm))) else {
+            return;
+        };
+        b.setImage(bar::image_with_extra(view, 1.0).as_deref());
+        self.geo_before = Some(before);
+        let block = block2::RcBlock::new(|_t: std::ptr::NonNull<objc2_foundation::NSTimer>| {
+            with_app(|a| a.geo_finish());
+        });
+        let t = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.25, false, &block) };
+        self.geo_timer = Some(t);
+    }
+
+    fn geo_restore(&self) {
+        if let (Some(view), Some(b)) = (self.bar_view.as_ref(), self.item.as_ref().and_then(|i| i.button(self.mtm))) {
+            b.setImage(bar::image(view).as_deref());
+        }
+    }
+
+    /// Read the edges after the nudge, put the width back, act on the verdict.
+    fn geo_finish(&mut self) {
+        self.geo_timer = None;
+        let Some(before) = self.geo_before.take() else { return };
+        let after = self
+            .item
+            .as_ref()
+            .and_then(|i| i.button(self.mtm))
+            .and_then(|b| b.window())
+            .map(|w| {
+                let f = w.frame();
+                overflow::Rect {
+                    x: f.origin.x,
+                    y: f.origin.y,
+                    w: f.size.width,
+                    h: f.size.height,
+                }
+            });
+        self.geo_restore();
+        let Some(after) = after else { return };
+        if self.settings.display_mode() != DisplayMode::Expanded || !self.menu_bar_up() {
+            return;
+        }
+        let verdict = overflow::judge_nudge(before, after);
+        if std::env::var_os("BATTBAR_LOG").is_some() {
+            eprintln!("[{}] width nudge: {before:?} -> {after:?}: {verdict:?}", local_time());
+        }
+        match verdict {
+            overflow::Edges::Hidden => self.overflow_apply(Some(overflow::Outcome::Collapse), overflow::Timer::Keep),
+            overflow::Edges::Fits => self.overflow_apply(Some(overflow::Outcome::Fits), overflow::Timer::Keep),
+            overflow::Edges::Unknown => {}
         }
     }
 
     fn overflow_fire(&mut self) {
         self.overflow_timer = None;
-        if !self.auto_collapse || self.settings.display_mode() != DisplayMode::Expanded {
+        if self.detection != overflow::Detection::Occlusion || self.settings.display_mode() != DisplayMode::Expanded {
             return;
         }
         let seen = self.item_seen().unwrap_or(overflow::Seen::Shown);
@@ -1433,8 +1576,9 @@ impl App {
         match outcome {
             Some(overflow::Outcome::Collapse) => {
                 if std::env::var_os("BATTBAR_LOG").is_some() {
-                    eprintln!("[{}] expanded item hidden by macOS for 1 s: collapsing", local_time());
+                    eprintln!("[{}] expanded item hidden by macOS: collapsing", local_time());
                 }
+                self.geo_schedule(None);
                 self.settings.display_mode = Some(DisplayMode::Collapsed);
                 self.settings.collapsed_for_space = true;
                 self.save();
@@ -1579,6 +1723,10 @@ fn main() {
         let width = num("--width").unwrap_or(120.0);
         let grow = num("--grow").map(|w| (w, num("--after").unwrap_or(10.0)));
         let ramp = num("--ramp").map(|step| (step, num("--every").unwrap_or(3.0)));
+        if let Some(list) = args.iter().position(|a| a == "--nudge").and_then(|j| args.get(j + 1)) {
+            probe::nudge(list.split(',').filter_map(|w| w.parse().ok()).collect());
+            return;
+        }
         probe::run(width, grow, ramp);
         return;
     }
@@ -1626,9 +1774,11 @@ fn main() {
         item: None,
         overflow: overflow::OverflowGuard::default(),
         bar_key: String::new(),
-        auto_collapse: overflow::auto_collapse_supported(
-            objc2_foundation::NSProcessInfo::processInfo().operatingSystemVersion().majorVersion,
-        ),
+        detection: overflow::detection(objc2_foundation::NSProcessInfo::processInfo().operatingSystemVersion().majorVersion),
+        geo_timer: None,
+        geo_before: None,
+        bar_view: None,
+        away: 0,
         overflow_timer: None,
         occlusion_watch: None,
         shown: vec![],
@@ -1672,7 +1822,7 @@ fn main() {
     // Another space (leaving a full-screen app): the menu bar may be back with the item
     // still hidden; look again.
     let space_changed = block2::RcBlock::new(|_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
-        with_app(|a| a.on_occlusion());
+        with_app(|a| a.on_menu_bar_context_changed(overflow::SETTLE.as_secs_f64()));
     });
     let _space_observer = unsafe {
         NSWorkspace::sharedWorkspace()
@@ -1684,15 +1834,66 @@ fn main() {
                 &space_changed,
             )
     };
+    // Another front app: its menus take more or less room (macOS 27 nudge check).
+    let app_activated = block2::RcBlock::new(|_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+        with_app(|a| {
+            if a.detection == overflow::Detection::Geometry {
+                a.on_menu_bar_context_changed(0.5);
+            }
+        });
+    });
+    let _app_observer = unsafe {
+        NSWorkspace::sharedWorkspace()
+            .notificationCenter()
+            .addObserverForName_object_queue_usingBlock(
+                Some(objc2_app_kit::NSWorkspaceDidActivateApplicationNotification),
+                None,
+                Some(&objc2_foundation::NSOperationQueue::mainQueue()),
+                &app_activated,
+            )
+    };
+    // No menu bar for the user: screen locked, screen saver, displays asleep. No overflow
+    // verdicts meanwhile; look again when it is back.
+    let mut _away_observers = vec![];
+    for (name, bit, away, distributed) in [
+        ("com.apple.screenIsLocked", 1u8, true, true),
+        ("com.apple.screenIsUnlocked", 1, false, true),
+        ("com.apple.screensaver.didstart", 2, true, true),
+        ("com.apple.screensaver.didstop", 2, false, true),
+        ("NSWorkspaceScreensDidSleepNotification", 4, true, false),
+        ("NSWorkspaceScreensDidWakeNotification", 4, false, false),
+    ] {
+        let block = block2::RcBlock::new(move |_n: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+            with_app(|a| a.set_away(bit, away));
+        });
+        let center: Retained<objc2_foundation::NSNotificationCenter> = if distributed {
+            Retained::into_super(objc2_foundation::NSDistributedNotificationCenter::defaultCenter())
+        } else {
+            NSWorkspace::sharedWorkspace().notificationCenter()
+        };
+        _away_observers.push(unsafe {
+            center.addObserverForName_object_queue_usingBlock(
+                Some(&ns(name)),
+                None,
+                Some(&objc2_foundation::NSOperationQueue::mainQueue()),
+                &block,
+            )
+        });
+    }
     notify::request_authorization();
-    // Development: `BATTBAR_DEV_OPEN_MENU=<seconds>` opens battbar's own menu after that
-    // long (for screenshots of the menu; no Accessibility needed for the own item).
+    // Development: `BATTBAR_DEV_OPEN_MENU=<seconds>` pops battbar's own menu up at the
+    // top left of the main screen after that long (screenshots of the menu; clicking the
+    // item from code does not open it on macOS 27, and the own menu needs no
+    // Accessibility).
     #[cfg(debug_assertions)]
     if let Some(secs) = std::env::var("BATTBAR_DEV_OPEN_MENU").ok().and_then(|v| v.parse::<f64>().ok()) {
         let block = block2::RcBlock::new(|_t: std::ptr::NonNull<objc2_foundation::NSTimer>| {
-            if let Some(b) = with_app(|a| a.item.as_ref().and_then(|i| i.button(a.mtm))).flatten() {
-                // SAFETY: a click on our own status item button, no sender needed.
-                unsafe { b.performClick(None) };
+            let menu = with_app(|a| a.item.as_ref().and_then(|i| i.menu(a.mtm))).flatten();
+            if let Some(menu) = menu {
+                let top = with_app(|a| objc2_app_kit::NSScreen::mainScreen(a.mtm).map(|s| s.frame().size.height))
+                    .flatten()
+                    .unwrap_or(900.0);
+                menu.popUpMenuPositioningItem_atLocation_inView(None, objc2_foundation::NSPoint::new(40.0, top - 40.0), None);
             }
         });
         let _ = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(secs, false, &block) };

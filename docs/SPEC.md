@@ -497,12 +497,40 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   notifications). Logic in `overflow.rs`, tested (collapse after 1 s hidden, initial
   placement ignored, no self-expansion, repeated Expand → new collapse and
   notification).
-- **Only on macOS 26 and older** (0.5.0-rc.3): macOS 27 hides an item without room
-  but keeps reporting it visible (occlusion set, frame as if shown, no per-item window
-  in the window list, no API in the 26.2 SDK; DISCOVERY "Full-screen apps"). The
-  automatic fallback is therefore switched off by OS version on 27 and later
-  (`overflow::auto_collapse_supported`, tested), not left to "never fire". **Not
-  re-checked on macOS 26 hardware after this change** (the maintainer's Mac runs 27).
+- **Display logic (0.5.0-rc.4)**:
+  1. First start (no settings file): Collapsed.
+  2. The mode (Expanded / Collapsed) is saved. A forced collapse saves Collapsed; back
+     to Expanded only by the user.
+  3. While Expanded: if the menu bar is shown and macOS hid the item → Collapsed, the
+     notification "battbar collapsed — Not enough space…" (every time) and "Not enough
+     space last time" in the menu until an Expand fits.
+  4. Nothing while the menu bar is not shown: full-screen app, auto-hidden menu bar,
+     screen locked, screen saver, displays asleep, Mission Control, switching desktops.
+     Where it cannot be told apart, rather not collapse than collapse wrongly.
+  5. Re-opening the running app: always Collapsed (the way out).
+- **How "macOS hid the item" is told** (`overflow::detection` by OS version, tested):
+  - **macOS 26 and older: occlusion** — the visible bit of the item window clears for
+    1 s (`OverflowGuard`), with the menu-bar guards below.
+  - **macOS 27 and later: a 1-pt nudge.** macOS 27 keeps the occlusion bit set for a
+    hidden item (DISCOVERY "macOS 27: can an app tell"). battbar draws the item's image
+    1 pt wider and reads the window's edges 0.25 s later: right edge kept → fits; left
+    edge kept → hidden (`overflow::judge_nudge`); anything else → no verdict. The image,
+    not an explicit length, is widened: an explicit length changes the item's margins
+    (+17 pt measured), which could itself push a just-fitting item out. Nudges run 1 s
+    after the item's content changed (also right after start-up, once the items are
+    placed — instead of starting collapsed and expanding), 0.5 s after another app
+    became active, and 1 s after a screen, desktop or full-screen change, an unlock, the
+    end of a screen saver or the displays waking; never while the menu bar is not shown.
+  - **Menu bar not shown** (both): macOS 26's frame rule and macOS 27's menu bar window
+    rule (below), plus `com.apple.screenIsLocked`/`Unlocked`,
+    `com.apple.screensaver.didstart`/`didstop` and
+    `NSWorkspaceScreensDidSleep`/`DidWakeNotification`.
+  - **Checked on macOS 27.2.1** (2026-11-27): an item that fits stays (nudge "Fits"); an
+    item too wide collapses with the notification; full-screen video, Mission Control,
+    switching desktops, lock and unlock → no collapse (no nudge while the menu bar was
+    hidden). **Not re-checked on macOS 26 hardware** since 0.5.0-rc.2 (the maintainer's
+    Mac runs 27): the lock, screen saver, display-sleep, Mission Control and desktop
+    switching cases are unverified there.
 - **Way out on every version: re-open battbar** (0.5.0-rc.3). Opening the running app
   again (Spotlight, Applications, `open -a battbar`) reaches
   `applicationShouldHandleReopen:hasVisibleWindows:`; Expanded → Collapsed with the
@@ -594,10 +622,6 @@ See [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Backlog (not scheduled)
 
-- **Detect a hidden item on macOS 27** without new permissions (no Accessibility, no
-  Screen Recording), so the automatic fallback can work there again. Discovery with
-  `battbar-app --probe-menu-bar --ramp STEP --every S`; candidates: the macOS 27 SDK,
-  the button's geometry and visibility, other apps' menu bar windows, redraws.
 
 - **Notification permission in the first-run flow (next version).** battbar asks for
   notification permission at start-up; macOS shows that request as a banner in the
