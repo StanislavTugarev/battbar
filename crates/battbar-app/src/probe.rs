@@ -11,7 +11,9 @@
 //!
 //! It also subscribes to the item window's occlusion notifications (what the app uses)
 //! and prints each as `EVENT`, so missing or late notifications show next to the
-//! polled state. `--grow W --after S` widens the item to W points after S seconds.
+//! polled state. `--grow W --after S` widens the item to W points after S seconds;
+//! `--ramp STEP --every S` widens it by STEP points every S seconds and shows the width
+//! in the item (to see at which width macOS stops showing it).
 //! (Polling here is deliberate: this is a diagnostic, not the app.)
 
 use block2::RcBlock;
@@ -99,7 +101,7 @@ fn snapshot(mtm: MainThreadMarker, item: &NSStatusItem) -> String {
     s
 }
 
-pub fn run(width: f64, grow: Option<(f64, f64)>) {
+pub fn run(width: f64, grow: Option<(f64, f64)>, ramp: Option<(f64, f64)>) {
     let mtm = MainThreadMarker::new().expect("main thread");
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
@@ -150,6 +152,19 @@ pub fn run(width: f64, grow: Option<(f64, f64)>) {
             it.setLength(w);
         });
         unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(after, false, &block) }
+    });
+    let _ramp_timer = ramp.map(|(step, every)| {
+        let it = item_for_events.clone();
+        let block = RcBlock::new(move |_t: std::ptr::NonNull<NSTimer>| {
+            let w = it.length() + step;
+            println!("[{:>7.1}s] RAMP to {w} pt", start.elapsed().as_secs_f64());
+            let _ = std::io::stdout().flush();
+            it.setLength(w);
+            if let Some(b) = it.button(mtm) {
+                b.setTitle(&NSString::from_str(&format!("◀ {w:.0} pt ▶")));
+            }
+        });
+        unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(every, true, &block) }
     });
     let _keep = observer;
     app.run();

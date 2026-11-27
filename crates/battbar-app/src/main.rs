@@ -1533,7 +1533,8 @@ fn main() {
         };
         let width = num("--width").unwrap_or(120.0);
         let grow = num("--grow").map(|w| (w, num("--after").unwrap_or(10.0)));
-        probe::run(width, grow);
+        let ramp = num("--ramp").map(|step| (step, num("--every").unwrap_or(3.0)));
+        probe::run(width, grow, ramp);
         return;
     }
     // Development: render the status item for sample devices (all layouts) as PNGs.
