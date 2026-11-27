@@ -121,9 +121,7 @@ pub fn window_server_state(window_number: isize) -> (Option<String>, usize, usiz
     const ALL: u32 = 0;
     const INCLUDING_WINDOW: u32 = 8;
     const STATUS_LEVEL_KEY: i32 = 9;
-    let list = |opt: u32, rel: u32| unsafe {
-        Retained::<NSArray<NSDictionary>>::from_raw(CGWindowListCopyWindowInfo(opt, rel).cast())
-    };
+    let list = |opt: u32, rel: u32| unsafe { Retained::<NSArray<NSDictionary>>::from_raw(CGWindowListCopyWindowInfo(opt, rel).cast()) };
     let get = |d: &NSDictionary, k: &str| -> Option<Retained<AnyObject>> {
         let key = NSString::from_str(k);
         let key: &AnyObject = key.as_ref();

@@ -121,6 +121,12 @@ pub fn run(width: f64, grow: Option<(f64, f64)>, ramp: Option<(f64, f64)>) {
     let mtm = MainThreadMarker::new().expect("main thread");
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+    // A diagnostic run must not be napped (its timers stalled after ~30 s on macOS 27);
+    // the app itself takes no such activity.
+    let _activity = objc2_foundation::NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+        objc2_foundation::NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+        &NSString::from_str("battbar menu bar probe"),
+    );
     let item: Retained<NSStatusItem> = NSStatusBar::systemStatusBar().statusItemWithLength(width);
     item.setAutosaveName(Some(&NSString::from_str("battbar_probe")));
     if let Some(b) = item.button(mtm) {

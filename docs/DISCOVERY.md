@@ -690,8 +690,10 @@ Goal: the automatic "not enough space" fallback on macOS 27 without new permissi
 (no Accessibility, no Screen Recording). macOS 27.2.1, two displays; tools:
 `battbar-app --probe-menu-bar --ramp STEP --every S` (the item widens step by step and
 shows its width; the probe logs every signal below), a window-list watcher, SDK headers.
-The item was hidden from the start of the last run (40 pt, Claude in front: the menu bar
-was full), so every probe sample below is a **hidden** item.
+Correction (same day): in the 40-pt run the probe item **was shown** (next to Docker,
+growing to the left); the user's battbar disappeared at that moment, most likely because
+the development build was quit for screenshots in the same seconds. The hidden-item
+columns below come from the 2588-pt development build and from the 400 → 2500 pt run.
 
 | Candidate | Visible item | Hidden item | Usable |
 |---|---|---|---|
@@ -709,7 +711,30 @@ macOS 27.2.1 shows no button for hidden menu bar items (checked on the reference
 some articles describe one). `performClick` on the stand-in button does not open the
 menu either (tried for screenshots).
 
-**Conclusion:** no public signal tells a macOS 27 app that the system hid its status
+**Geometry when the item stops fitting** (400 → 2500 pt, +100 pt every 3 s, Claude in
+front, nothing else changing; the user saw it vanish after 1200 pt):
+
+| Width | Window left edge x | Right edge x + w | Seen |
+|---|---|---|---|
+| 400 … 1200 pt | 1298 … 498 (moves left by the growth) | **1714, constant** (next to Docker) | shown |
+| 1300 … 2500 pt | **498, pinned** (the end of the app's menus) | 1814 … 3014 (moves right) | **hidden** |
+
+While the item fits, macOS keeps its right edge at the next item and grows it to the
+left; once its left edge reaches the app's menus, macOS hides it and the window stops
+moving left and grows to the right instead, over the neighbouring items. Same pattern in
+the 2588-pt development build: x stayed at 1720 (where the collapsed item was), the
+window ran off to the right. Every other signal stayed as for a shown item (occlusion
+visible, `visibleRect` full, 3 redraws, no WindowServer window). This 400 → 2500 pt run
+had App Nap switched off for the probe (`beginActivityWithOptions` in the diagnostic
+only): earlier runs stalled after ~30 s.
+
+So the only usable signal is relative: the item's right edge leaves the place where it
+ended while it fitted. It is unambiguous when battbar itself changes the item's width
+(right edge kept → fits; left edge kept → hidden). It is ambiguous when the frame moves
+without a width change: a front app with longer menus (hidden) and a menu bar item to
+battbar's right going away (still shown) both move the window to the right.
+
+**Conclusion (before the geometry run):** no public signal tells a macOS 27 app that the system hid its status
 item. On 27 battbar stays with Collapsed as the default for new installations and
 re-opening the app as the way out; the automatic fallback is off by OS version. The
 search is in the SPEC backlog ("Detect a hidden item on macOS 27"). Related: macOS 27
