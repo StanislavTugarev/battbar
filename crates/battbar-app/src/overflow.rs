@@ -170,6 +170,35 @@ impl OverflowGuard {
     }
 }
 
+/// The automatic fallback needs macOS to say that it hid the item. macOS 26 and older
+/// do (occlusion); macOS 27 hides an item without room but reports it visible
+/// (DISCOVERY "Full-screen apps"), so the fallback is off there: re-opening battbar is
+/// the way out (see [`reopen`]).
+pub fn auto_collapse_supported(macos_major: isize) -> bool {
+    macos_major <= 26
+}
+
+/// What re-opening the running battbar (Spotlight, Applications, `open -a battbar`) did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reopen {
+    /// It was Expanded (and perhaps hidden by macOS for lack of room): now Collapsed.
+    Collapsed,
+    /// Already Collapsed: nothing to change.
+    AlreadyCollapsed,
+}
+
+/// Re-opening battbar while it runs is the way out when its expanded item does not fit
+/// and macOS hides it: switch to Collapsed (one icon), with the same note in the menu
+/// as the automatic fallback.
+pub fn reopen(settings: &mut battbar_core::Settings) -> Reopen {
+    if settings.display_mode() == battbar_core::DisplayMode::Collapsed {
+        return Reopen::AlreadyCollapsed;
+    }
+    settings.display_mode = Some(battbar_core::DisplayMode::Collapsed);
+    settings.collapsed_for_space = true;
+    Reopen::Collapsed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -496,5 +525,32 @@ mod tests {
         s.advance(61_100);
         assert_eq!(s.mode(), DisplayMode::Collapsed);
         assert_eq!(s.notifications, 1);
+    }
+
+    #[test]
+    fn auto_collapse_only_up_to_macos_26() {
+        assert!(auto_collapse_supported(14));
+        assert!(auto_collapse_supported(26));
+        assert!(!auto_collapse_supported(27));
+        assert!(!auto_collapse_supported(28));
+    }
+
+    /// Re-opening the running app collapses an expanded island (the way out when macOS
+    /// hides it), once; a collapsed one stays as it is.
+    #[test]
+    fn reopening_collapses_once() {
+        let mut s = Settings {
+            display_mode: Some(DisplayMode::Expanded),
+            ..Default::default()
+        };
+        assert_eq!(reopen(&mut s), Reopen::Collapsed);
+        assert_eq!(s.display_mode(), DisplayMode::Collapsed);
+        assert!(s.collapsed_for_space, "the menu says why");
+        assert_eq!(reopen(&mut s), Reopen::AlreadyCollapsed);
+        assert_eq!(s.display_mode(), DisplayMode::Collapsed);
+        // A new installation starts collapsed: re-opening changes nothing.
+        let mut fresh = Settings::default();
+        assert_eq!(reopen(&mut fresh), Reopen::AlreadyCollapsed);
+        assert!(!fresh.collapsed_for_space);
     }
 }

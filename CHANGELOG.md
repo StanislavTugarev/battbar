@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-11-25
+## [0.5.0] - 2026-11-27
 
 ### Added
 
@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
   disconnect, are noticed through macOS hotplug and Bluetooth connection notifications
   instead of a re-scan every 6–10 s (a plugged-in receiver could take over a minute to
   appear in 0.4). A re-scan every 5 minutes remains as a safety net.
+- Opening battbar again while it runs (Spotlight, Applications) collapses it to one
+  icon and says so — the way back when the menu bar has no room for all devices.
 - Release candidates know their full version (e.g. `0.5.0-rc.1`): shown at the bottom
   of the menu, by `battbar --version` and in `battbar dump`. A candidate offers the
   final release as an update once it is out (before, both counted as `0.5.0`).
@@ -23,6 +25,13 @@ All notable changes to this project are documented here. The format follows
   "Works with my device" template. SUPPORTED_DEVICES shows where a device was verified
   or that users reported it.
 
+### Known issues
+
+- macOS 27 hides the expanded item when the menu bar has no room for it but does not
+  tell apps, so the automatic switch to one icon is off there. If battbar is missing
+  from the menu bar, open it again (Spotlight or Applications): it collapses to one
+  icon.
+
 ### Fixed
 
 - A Bluetooth LE keyboard that was switched off could keep showing its last value for
@@ -31,7 +40,7 @@ All notable changes to this project are documented here. The format follows
   its own after reading.
 - With all devices shown in the menu bar, a full-screen video or game made battbar
   collapse to one icon and post "Not enough space" (macOS hides the whole menu bar
-  then); a hidden menu bar no longer counts as missing space.
+  then); a hidden menu bar no longer counts as missing space (macOS 26 and 27).
 - The first-run question (Launch at Login, with the update checkbox) was stretched to
   almost twice its normal width by the checkbox's long title; the title is short now
   ("Check for updates daily") and what the check sends is said in the text.

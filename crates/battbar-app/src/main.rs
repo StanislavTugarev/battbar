@@ -17,8 +17,8 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAlert, NSApplication, NSApplicationActivationPolicy, NSButton, NSCellImagePosition, NSControlStateValueOff, NSControlStateValueOn,
-    NSImage, NSMenu, NSMenuDelegate, NSMenuItem, NSPasteboard, NSPasteboardTypeString, NSStatusBar, NSStatusItem,
+    NSAlert, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSButton, NSCellImagePosition, NSControlStateValueOff,
+    NSControlStateValueOn, NSImage, NSMenu, NSMenuDelegate, NSMenuItem, NSPasteboard, NSPasteboardTypeString, NSStatusBar, NSStatusItem,
     NSVariableStatusItemLength, NSWorkspace,
 };
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString, NSURL};
@@ -95,6 +95,8 @@ struct App {
     /// What the item showed last (layout + segments), to restart the overflow check
     /// when it changes.
     bar_key: String,
+    /// The automatic "not enough space" fallback works on this macOS (26 and older).
+    auto_collapse: bool,
     /// The overflow check's one-shot timer (none while the item is shown and settled).
     overflow_timer: Option<Retained<objc2_foundation::NSTimer>>,
     /// Occlusion notifications of the item's window: (window address, observer token).
@@ -141,6 +143,16 @@ define_class!(
     struct Handler;
 
     unsafe impl NSObjectProtocol for Handler {}
+
+    unsafe impl NSApplicationDelegate for Handler {
+        /// battbar opened again while it runs (Spotlight, Applications, `open -a`): the
+        /// way out when macOS hides the expanded item for lack of room.
+        #[unsafe(method(applicationShouldHandleReopen:hasVisibleWindows:))]
+        fn should_handle_reopen(&self, _app: &NSApplication, _visible: bool) -> bool {
+            with_app(|a| a.on_reopen());
+            false
+        }
+    }
 
     unsafe impl NSMenuDelegate for Handler {
         #[unsafe(method(menuWillOpen:))]
@@ -1191,8 +1203,8 @@ impl App {
         self.watch_item_window();
         if restart {
             let timer = match self.settings.display_mode() {
-                DisplayMode::Expanded => self.overflow.changed(std::time::Instant::now()),
-                DisplayMode::Collapsed => self.overflow.disarm(),
+                DisplayMode::Expanded if self.auto_collapse => self.overflow.changed(std::time::Instant::now()),
+                _ => self.overflow.disarm(),
             };
             self.overflow_apply(None, timer);
         }
@@ -1335,8 +1347,41 @@ impl App {
         }
     }
 
+    /// Re-opened while running: collapse (see `overflow::reopen`) and say so.
+    fn on_reopen(&mut self) {
+        let outcome = overflow::reopen(&mut self.settings);
+        if std::env::var_os("BATTBAR_LOG").is_some() {
+            eprintln!("[{}] re-opened: {outcome:?}", local_time());
+        }
+        let (title, body) = match outcome {
+            overflow::Reopen::Collapsed => {
+                self.save();
+                let timer = self.overflow.disarm();
+                self.overflow_apply(None, timer);
+                if self.menu_open {
+                    self.dirty = true;
+                } else {
+                    self.render();
+                }
+                (
+                    "battbar collapsed to fit the menu bar",
+                    "All devices are behind one icon now. Choose Expand in the battbar menu to show them side by side again.",
+                )
+            }
+            overflow::Reopen::AlreadyCollapsed => (
+                "battbar is running",
+                "Its icon is in the menu bar. If you don't see it, the menu bar is full: remove other icons to make room.",
+            ),
+        };
+        notify::post(&alerts::Alert {
+            id: format!("reopen-{}", unix_now()),
+            title: title.into(),
+            body: body.into(),
+        });
+    }
+
     fn on_occlusion(&mut self) {
-        if self.settings.display_mode() != DisplayMode::Expanded {
+        if !self.auto_collapse || self.settings.display_mode() != DisplayMode::Expanded {
             return;
         }
         let Some(seen) = self.item_seen() else { return };
@@ -1346,7 +1391,7 @@ impl App {
     }
 
     fn on_screens_changed(&mut self) {
-        if self.settings.display_mode() == DisplayMode::Expanded {
+        if self.auto_collapse && self.settings.display_mode() == DisplayMode::Expanded {
             let timer = self.overflow.changed(std::time::Instant::now());
             self.overflow_apply(None, timer);
         }
@@ -1354,7 +1399,7 @@ impl App {
 
     fn overflow_fire(&mut self) {
         self.overflow_timer = None;
-        if self.settings.display_mode() != DisplayMode::Expanded {
+        if !self.auto_collapse || self.settings.display_mode() != DisplayMode::Expanded {
             return;
         }
         let seen = self.item_seen().unwrap_or(overflow::Seen::Shown);
@@ -1581,6 +1626,9 @@ fn main() {
         item: None,
         overflow: overflow::OverflowGuard::default(),
         bar_key: String::new(),
+        auto_collapse: overflow::auto_collapse_supported(
+            objc2_foundation::NSProcessInfo::processInfo().operatingSystemVersion().majorVersion,
+        ),
         overflow_timer: None,
         occlusion_watch: None,
         shown: vec![],
@@ -1603,6 +1651,9 @@ fn main() {
         update_in_flight: false,
     };
     APP.with(|c| *c.borrow_mut() = Some(state));
+    // Re-opening battbar while it runs collapses it (see `on_reopen`). The delegate is
+    // weak; the handler lives in the app state.
+    with_app(|a| app.setDelegate(Some(ProtocolObject::from_ref(&*a.handler))));
     forget_old_status_items();
     with_app(|a| a.watch_bluetooth());
     with_app(|a| a.render());

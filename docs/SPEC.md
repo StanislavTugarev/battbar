@@ -497,6 +497,20 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   notifications). Logic in `overflow.rs`, tested (collapse after 1 s hidden, initial
   placement ignored, no self-expansion, repeated Expand → new collapse and
   notification).
+- **Only on macOS 26 and older** (0.5.0-rc.3): macOS 27 hides an item without room
+  but keeps reporting it visible (occlusion set, frame as if shown, no per-item window
+  in the window list, no API in the 26.2 SDK; DISCOVERY "Full-screen apps"). The
+  automatic fallback is therefore switched off by OS version on 27 and later
+  (`overflow::auto_collapse_supported`, tested), not left to "never fire". **Not
+  re-checked on macOS 26 hardware after this change** (the maintainer's Mac runs 27).
+- **Way out on every version: re-open battbar** (0.5.0-rc.3). Opening the running app
+  again (Spotlight, Applications, `open -a battbar`) reaches
+  `applicationShouldHandleReopen:hasVisibleWindows:`; Expanded → Collapsed with the
+  "Not enough space last time" note and the notification "battbar collapsed to fit the
+  menu bar"; already Collapsed → the notification "battbar is running" (its icon is in
+  the menu bar, or the menu bar is full). Logic `overflow::reopen`, tested; checked live
+  with `open -a` on macOS 27.2.1. macOS 27.2.1 shows no button for hidden menu bar items
+  (checked; some articles describe one).
 - **Full-screen apps and a hidden menu bar** (0.5): a full-screen app (video, game)
   or "automatically hide the menu bar" hides the whole menu bar, and the item with it.
   That is not "no room". macOS 26 moves the item's window above the top edge of its
@@ -579,6 +593,11 @@ See [`DISCOVERY.md`](DISCOVERY.md).
   `docs/ADDING_A_DEVICE.md` without reading code.
 
 ## Backlog (not scheduled)
+
+- **Detect a hidden item on macOS 27** without new permissions (no Accessibility, no
+  Screen Recording), so the automatic fallback can work there again. Discovery with
+  `battbar-app --probe-menu-bar --ramp STEP --every S`; candidates: the macOS 27 SDK,
+  the button's geometry and visibility, other apps' menu bar windows, redraws.
 
 - **Notification permission in the first-run flow (next version).** battbar asks for
   notification permission at start-up; macOS shows that request as a banner in the

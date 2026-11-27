@@ -118,8 +118,12 @@ final release is offered once it is out.
   device's name opens its actions — move it, hide it, merge it with another entry,
   split it, or unlink a remembered Bluetooth connection.
 - If the expanded item does not fit (long app menus, small display, many icons), macOS
-  hides it; battbar then switches to collapsed and tells you in a notification. Choose
-  **Expand in Menu Bar** again once there is room.
+  hides it. On macOS 26 and older battbar notices, switches to collapsed and tells you
+  in a notification. **On macOS 27 it cannot tell** (macOS reports the hidden item as
+  shown, and has no button for hidden menu bar items): if battbar is not in the menu
+  bar, **open battbar again** (Spotlight or the Applications folder) — it collapses to
+  one icon and says so. This works on every macOS version. Choose **Expand in Menu
+  Bar** again once there is room (fewer icons: System Settings → Menu Bar).
 - Updating from 0.3 keeps the expanded look; new installations start collapsed.
 - **Settings**: launch at login, update check (off by default), menu bar mode,
   update interval, low-battery alert threshold (default 15 %, once per discharge),
