@@ -104,6 +104,59 @@ pub fn windows() -> Windows {
     out
 }
 
+/// Diagnostics (`--probe-menu-bar`): what WindowServer knows about one window
+/// (`None`: not in its list at all), and how many windows at the status-item level
+/// exist (on screen / in total) — without window titles.
+#[cfg(target_os = "macos")]
+pub fn window_server_state(window_number: isize) -> (Option<String>, usize, usize) {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
+    use std::ffi::c_void;
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGWindowListCopyWindowInfo(option: u32, relative_to: u32) -> *mut c_void;
+        fn CGWindowLevelForKey(key: i32) -> i32;
+    }
+    const ALL: u32 = 0;
+    const INCLUDING_WINDOW: u32 = 8;
+    const STATUS_LEVEL_KEY: i32 = 9;
+    let list = |opt: u32, rel: u32| unsafe {
+        Retained::<NSArray<NSDictionary>>::from_raw(CGWindowListCopyWindowInfo(opt, rel).cast())
+    };
+    let get = |d: &NSDictionary, k: &str| -> Option<Retained<AnyObject>> {
+        let key = NSString::from_str(k);
+        let key: &AnyObject = key.as_ref();
+        d.objectForKey(key)
+    };
+    let num = |d: &NSDictionary, k: &str| get(d, k).and_then(|v| v.downcast::<NSNumber>().ok()).map(|n| n.doubleValue());
+    let own = (window_number > 0)
+        .then(|| list(INCLUDING_WINDOW, window_number as u32))
+        .flatten()
+        .and_then(|l| l.iter().next())
+        .map(|d| {
+            format!(
+                "layer={} onscreen={} alpha={}",
+                num(&d, "kCGWindowLayer").unwrap_or(-1.0),
+                num(&d, "kCGWindowIsOnscreen").unwrap_or(0.0),
+                num(&d, "kCGWindowAlpha").unwrap_or(-1.0)
+            )
+        });
+    let status = unsafe { CGWindowLevelForKey(STATUS_LEVEL_KEY) } as f64;
+    let (mut on, mut total) = (0, 0);
+    if let Some(l) = list(ALL, 0) {
+        for d in l.iter() {
+            if num(&d, "kCGWindowLayer") == Some(status) {
+                total += 1;
+                if num(&d, "kCGWindowIsOnscreen") == Some(1.0) {
+                    on += 1;
+                }
+            }
+        }
+    }
+    (own, on, total)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

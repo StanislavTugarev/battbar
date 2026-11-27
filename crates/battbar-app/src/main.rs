@@ -1685,6 +1685,18 @@ fn main() {
             )
     };
     notify::request_authorization();
+    // Development: `BATTBAR_DEV_OPEN_MENU=<seconds>` opens battbar's own menu after that
+    // long (for screenshots of the menu; no Accessibility needed for the own item).
+    #[cfg(debug_assertions)]
+    if let Some(secs) = std::env::var("BATTBAR_DEV_OPEN_MENU").ok().and_then(|v| v.parse::<f64>().ok()) {
+        let block = block2::RcBlock::new(|_t: std::ptr::NonNull<objc2_foundation::NSTimer>| {
+            if let Some(b) = with_app(|a| a.item.as_ref().and_then(|i| i.button(a.mtm))).flatten() {
+                // SAFETY: a click on our own status item button, no sender needed.
+                unsafe { b.performClick(None) };
+            }
+        });
+        let _ = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(secs, false, &block) };
+    }
     // First-run question, once the run loop is up. Postponed while App Translocation is
     // active (a login item registered from the randomised copy would break); answered
     // silently if Launch at Login is already on.

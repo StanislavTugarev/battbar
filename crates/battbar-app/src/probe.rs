@@ -24,6 +24,9 @@ use objc2_foundation::{NSRect, NSString, NSTimer};
 use std::cell::RefCell;
 use std::io::Write;
 
+/// How often AppKit drew the probe item's image (does it draw a hidden item?).
+static DRAWS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn r(rect: NSRect) -> String {
     format!(
         "({:.0},{:.0} {:.0}×{:.0})",
@@ -62,6 +65,19 @@ fn snapshot(mtm: MainThreadMarker, item: &NSStatusItem) -> String {
         item.isVisible(),
         objc2_app_kit::NSMenu::menuBarVisible(mtm)
     );
+    if let Some(btn) = item.button(mtm) {
+        let in_window = btn.convertRect_toView(btn.bounds(), None);
+        let (ws, status_on, status_all) = crate::menubar::window_server_state(win.windowNumber());
+        s.push_str(&format!(
+            " button={} button_screen={} visible_rect={} window_number={} ws={} status_level_windows={status_on}/{status_all} draws={}",
+            r(btn.frame()),
+            r(win.convertRectToScreen(in_window)),
+            r(btn.visibleRect()),
+            win.windowNumber(),
+            ws.unwrap_or_else(|| "absent".into()),
+            DRAWS.load(std::sync::atomic::Ordering::Relaxed)
+        ));
+    }
     let w = crate::menubar::windows();
     s.push_str(&format!(
         " menu_bar_window={:?} (menu bars: {})",
@@ -109,6 +125,16 @@ pub fn run(width: f64, grow: Option<(f64, f64)>, ramp: Option<(f64, f64)>) {
     item.setAutosaveName(Some(&NSString::from_str("battbar_probe")));
     if let Some(b) = item.button(mtm) {
         b.setTitle(&NSString::from_str("◀ probe ▶"));
+        // A drawn image next to the title: counts AppKit's draws of the item.
+        let draw = RcBlock::new(|rect: NSRect| -> objc2::runtime::Bool {
+            DRAWS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            objc2_app_kit::NSBezierPath::fillRect(rect);
+            objc2::runtime::Bool::YES
+        });
+        let img = objc2_app_kit::NSImage::imageWithSize_flipped_drawingHandler(objc2_foundation::NSSize::new(6.0, 6.0), false, &draw);
+        img.setTemplate(true);
+        b.setImage(Some(&img));
+        b.setImagePosition(objc2_app_kit::NSCellImagePosition::ImageLeft);
     }
     println!("probe: status item width {width} pt; switch apps, screens and menus; Ctrl-C to quit");
     let last = RefCell::new(String::new());

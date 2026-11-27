@@ -683,3 +683,35 @@ for updates daily" and the detail moved into the informative text: window 260 pt
 standard alert width), buttons 228 pt, checkbox 166 pt. The other alerts have no
 accessory view and keep the standard width.
 
+
+## macOS 27: can an app tell that its status item is hidden? (2026-11-27)
+
+Goal: the automatic "not enough space" fallback on macOS 27 without new permissions
+(no Accessibility, no Screen Recording). macOS 27.2.1, two displays; tools:
+`battbar-app --probe-menu-bar --ramp STEP --every S` (the item widens step by step and
+shows its width; the probe logs every signal below), a window-list watcher, SDK headers.
+The item was hidden from the start of the last run (40 pt, Claude in front: the menu bar
+was full), so every probe sample below is a **hidden** item.
+
+| Candidate | Visible item | Hidden item | Usable |
+|---|---|---|---|
+| SDK 27 (`MacOSX27.2.sdk` vs 26.5): `NSStatusItem`, `NSStatusBar`, `NSStatusBarButton`, other AppKit headers | — | — | **no**: new only `expandedInterfaceDelegate` (begin/end of an own window shown under the item on click), `expandedInterfaceSession.cancel`, `view` un-deprecated. `visible` is documented as "visible … even if it is obscured by the application menu" |
+| Occlusion visible bit of the item window | set | **set** (216–2588 pt, also 40 pt) | no (it still clears for a full-screen app) |
+| Item window frame / button in screen coordinates (`convertRectToScreen`) | in the menu bar band | same, growing to the left as if shown | no |
+| Button `visibleRect` | full | **full** | no |
+| `window.isVisible`, `isOnActiveSpace`, `NSStatusItem.isVisible` | true / false / true | same | no |
+| Window number in WindowServer (`CGWindowListCopyWindowInfo` with the window) | — | 4294967296 (0x100000000), **not in WindowServer's list** | no: the window is a stand-in; the system draws the item |
+| Other apps' status-item windows (window list, all / on screen, no titles) | — | not listed (2 on-screen / 5 total windows at status level, constant; menu bars are one window per display) | no: occupied width cannot be computed |
+| Redraws of the item's image (drawing-handler counter) | 3 at start | **3**, unchanged while the width grew | not conclusive (no visible baseline in this run); not pursued |
+| Button-free ways: `NSMenu.menuBarVisible` | true | true | no |
+
+macOS 27.2.1 shows no button for hidden menu bar items (checked on the reference Mac;
+some articles describe one). `performClick` on the stand-in button does not open the
+menu either (tried for screenshots).
+
+**Conclusion:** no public signal tells a macOS 27 app that the system hid its status
+item. On 27 battbar stays with Collapsed as the default for new installations and
+re-opening the app as the way out; the automatic fallback is off by OS version. The
+search is in the SPEC backlog ("Detect a hidden item on macOS 27"). Related: macOS 27
+hides menu item images by default (`NSMenuItem.preferredImageVisibility`, new in the 27
+SDK); battbar's menu follows the system style.
